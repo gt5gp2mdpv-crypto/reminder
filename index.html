@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StudyFlow</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&family=Noto+Sans+JP:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#0e0f14; --surface:#161820; --surface2:#1e2030; --surface3:#252840;
+  --border:#2e3155; --border-light:#3a3f6a;
+  --accent:#7c85f5; --accent2:#f5a97f; --accent3:#a6e3a1; --accent4:#f38ba8;
+  --text:#cdd6f4; --text-dim:#7f849c; --text-muted:#45475a;
+  --c-juku:#f5a97f; --c-gakko:#89dceb; --c-jigaku:#a6e3a1; --c-other:#cba6f7;
+  --expired:#f38ba8; --warning:#f9e2af;
+  --font-d:'DM Serif Display',serif; --font-m:'DM Mono',monospace; --font-j:'Noto Sans JP',sans-serif;
+  --r:10px; --rs:6px;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font-j);}
+::-webkit-scrollbar{width:5px;height:5px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+
+.app{display:flex;flex-direction:column;height:100vh;overflow:hidden;}
+header{padding:16px 20px 0;display:flex;align-items:baseline;gap:10px;flex-shrink:0;}
+header h1{font-family:var(--font-d);font-size:24px;color:var(--accent);}
+.sub{font-size:11px;color:var(--text-dim);font-family:var(--font-m);}
+#clock{margin-left:auto;font-size:11px;color:var(--text-muted);font-family:var(--font-m);}
+.main{display:flex;flex:1;overflow:hidden;}
+
+/* NAV */
+.nav{width:200px;flex-shrink:0;border-right:1px solid var(--border);display:flex;flex-direction:column;padding:12px 8px;gap:2px;overflow-y:auto;}
+.nav-tab{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:var(--rs);border:none;background:transparent;color:var(--text-dim);cursor:pointer;font-family:var(--font-j);font-size:13px;font-weight:500;transition:all .15s;width:100%;}
+.nav-tab:hover{background:var(--surface2);color:var(--text);}
+.nav-tab.active{background:var(--surface2);color:var(--text);}
+.dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.cnt{margin-left:auto;font-family:var(--font-m);font-size:10px;background:var(--surface3);color:var(--text-muted);padding:1px 6px;border-radius:10px;}
+.nav-sep{height:1px;background:var(--border);margin:6px 4px;}
+.nav-bot{margin-top:auto;border-top:1px solid var(--border);padding-top:8px;display:flex;flex-direction:column;gap:4px;}
+.sync-st{font-family:var(--font-m);font-size:9px;color:var(--text-muted);padding:0 12px 4px;}
+
+/* RIGHT */
+.right{flex:1;overflow-y:auto;padding:20px 24px;}
+.ph{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;}
+.ph-title{font-size:17px;font-weight:700;display:flex;align-items:center;gap:8px;}
+.ph-bar{width:4px;height:18px;border-radius:2px;}
+
+.add-parent-btn{display:flex;align-items:center;gap:6px;padding:7px 14px;border-radius:var(--rs);background:var(--surface2);border:1px dashed var(--border-light);color:var(--text-dim);cursor:pointer;font-family:var(--font-j);font-size:12px;transition:all .15s;}
+.add-parent-btn:hover{border-color:var(--accent);color:var(--accent);background:rgba(124,133,245,.06);}
+
+/* PARENT CARD */
+.parent-list{display:flex;flex-direction:column;gap:14px;}
+.parent-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;transition:border-color .15s;}
+.parent-card:hover{border-color:var(--border-light);}
+.parent-card.has-expired{border-color:rgba(243,139,168,.35);}
+.pc-head{display:flex;align-items:center;gap:10px;padding:12px 14px;}
+.pc-accent{width:3px;height:28px;border-radius:2px;flex-shrink:0;}
+.pc-info{flex:1;min-width:0;}
+.pc-title{font-size:15px;font-weight:600;}
+.pc-meta{display:flex;gap:5px;flex-wrap:wrap;margin-top:3px;}
+.tag{font-size:10px;font-family:var(--font-m);padding:2px 7px;border-radius:20px;background:var(--surface3);color:var(--text-dim);}
+.tag.t-問題集{background:rgba(245,169,127,.15);color:var(--c-juku);}
+.tag.t-教科書{background:rgba(137,220,235,.15);color:var(--c-gakko);}
+.tag.t-単語帳{background:rgba(166,227,161,.15);color:var(--c-jigaku);}
+.tag.t-授業復習{background:rgba(203,166,247,.15);color:var(--c-other);}
+.tag.t-汎用{background:rgba(124,133,245,.15);color:var(--accent);}
+.pc-summary{display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin-right:6px;}
+.badge{font-size:10px;font-family:var(--font-m);padding:2px 8px;border-radius:10px;display:inline-flex;align-items:center;gap:3px;}
+.badge.ok{background:rgba(166,227,161,.1);color:var(--accent3);}
+.badge.warn{background:rgba(249,226,175,.1);color:var(--warning);}
+.badge.urgent{background:rgba(243,139,168,.1);color:var(--expired);}
+.badge.expired{background:rgba(243,139,168,.2);color:var(--expired);}
+.badge.prog{background:rgba(124,133,245,.1);color:var(--accent);}
+.pc-actions{display:flex;gap:3px;}
+.act{padding:5px 7px;border-radius:4px;background:transparent;border:none;color:var(--text-muted);cursor:pointer;font-size:12px;transition:all .12s;}
+.act:hover{background:var(--surface3);color:var(--text);}
+.act.del:hover{color:var(--expired);}
+
+/* TOGGLE STRIP */
+.pc-strip{display:flex;align-items:center;gap:6px;padding:0 14px 10px;border-bottom:1px solid var(--border);}
+.tog-btn{display:flex;align-items:center;gap:5px;background:none;border:none;color:var(--text-muted);font-size:11px;font-family:var(--font-m);cursor:pointer;padding:3px 6px;border-radius:4px;transition:all .12s;}
+.tog-btn:hover{color:var(--text);background:var(--surface2);}
+.chev{transition:transform .2s;display:inline-block;font-style:normal;}
+.tog-btn.open .chev{transform:rotate(90deg);}
+.add-sub-btn{display:flex;align-items:center;gap:4px;background:none;border:1px dashed var(--border);color:var(--text-muted);font-size:11px;font-family:var(--font-j);cursor:pointer;padding:3px 10px;border-radius:4px;transition:all .12s;margin-left:auto;}
+.add-sub-btn:hover{border-color:var(--accent);color:var(--accent);}
+
+/* SUBTASK AREA */
+.sub-area{padding:8px 10px;}
+.sub-area.hidden{display:none;}
+
+/* SUBTASK CARD */
+.sub-card{background:var(--surface2);border:1px solid var(--border);border-radius:var(--rs);overflow:hidden;transition:border-color .15s;margin-bottom:6px;}
+.sub-card:hover{border-color:var(--border-light);}
+.sub-card.exp-c{border-color:rgba(243,139,168,.3);}
+.sub-card.done-c{opacity:.5;}
+.sc-head{display:flex;align-items:flex-start;gap:8px;padding:9px 12px;}
+.sc-check{width:15px;height:15px;border-radius:3px;border:2px solid var(--border-light);flex-shrink:0;margin-top:1px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;}
+.sc-check.ck{background:var(--accent3);border-color:var(--accent3);}
+.sc-check.ck::after{content:'✓';font-size:9px;color:#1e2030;font-weight:800;}
+.sc-body{flex:1;min-width:0;}
+.sc-title{font-size:13px;font-weight:500;word-break:break-all;}
+.sc-title.done{text-decoration:line-through;color:var(--text-dim);}
+.sc-tags{display:flex;gap:4px;flex-wrap:wrap;margin-top:3px;}
+.sc-acts{display:flex;gap:2px;margin-left:4px;}
+.sc-prog{padding:0 12px 8px;display:flex;align-items:center;gap:7px;}
+.prog-lbl{font-size:10px;font-family:var(--font-m);color:var(--text-dim);white-space:nowrap;}
+.prog-slider{flex:1;-webkit-appearance:none;appearance:none;height:3px;border-radius:2px;background:var(--surface3);outline:none;cursor:pointer;}
+.prog-slider::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid var(--bg);}
+.prog-pct{font-size:10px;font-family:var(--font-m);color:var(--accent);width:26px;text-align:right;}
+.sc-foot{display:flex;align-items:center;gap:6px;padding:0 12px 8px;}
+
+/* nested subtasks */
+.nested{padding-left:18px;border-left:1px solid var(--border);margin-left:8px;}
+.nested.hidden{display:none;}
+
+/* ADD FORM */
+.add-form{background:var(--surface3);border:1px solid var(--border-light);border-radius:var(--rs);padding:11px;margin:4px 0 6px;}
+.fr{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:7px;align-items:center;}
+.fi{flex:1;min-width:130px;padding:6px 9px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--rs);color:var(--text);font-family:var(--font-j);font-size:12px;outline:none;transition:border-color .15s;}
+.fi:focus{border-color:var(--accent);}
+.fi::placeholder{color:var(--text-muted);}
+.fsel{padding:6px 9px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--rs);color:var(--text);font-family:var(--font-j);font-size:12px;outline:none;cursor:pointer;}
+.fsel:focus{border-color:var(--accent);}
+.flbl{font-size:10px;color:var(--text-dim);white-space:nowrap;}
+.fa{display:flex;gap:5px;justify-content:flex-end;}
+.btn-ok{padding:6px 14px;background:var(--accent);border:none;border-radius:var(--rs);color:white;font-family:var(--font-j);font-size:12px;font-weight:500;cursor:pointer;}
+.btn-ok:hover{opacity:.85;}
+.btn-no{padding:6px 10px;background:transparent;border:1px solid var(--border);border-radius:var(--rs);color:var(--text-dim);font-family:var(--font-j);font-size:12px;cursor:pointer;}
+.btn-no:hover{color:var(--text);}
+
+/* CALENDAR */
+.cal-filter{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:14px;}
+.cf-tab{padding:4px 12px;border-radius:20px;font-size:11px;border:1px solid var(--border);background:transparent;color:var(--text-dim);cursor:pointer;transition:all .15s;font-family:var(--font-j);}
+.cf-tab.active{background:var(--accent);border-color:var(--accent);color:white;}
+.cal-day{display:flex;border-bottom:1px solid var(--border);}
+.cal-day:last-child{border-bottom:none;}
+.cd-left{width:70px;flex-shrink:0;padding:12px 8px;border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;}
+.cd-num{font-family:var(--font-m);font-size:20px;font-weight:300;line-height:1;}
+.cd-sub{font-size:9px;color:var(--text-dim);margin-top:2px;}
+.cd-num.tod{color:var(--accent);}
+.cd-sub.tod{color:var(--accent);}
+.cd-right{flex:1;padding:7px 12px;display:flex;flex-direction:column;gap:4px;}
+.cal-ev{display:flex;align-items:center;gap:7px;padding:5px 9px;border-radius:var(--rs);background:var(--surface2);border-left:3px solid var(--accent);font-size:12px;}
+.cal-ev.xp{border-left-color:var(--expired);opacity:.6;}
+.cev-t{font-family:var(--font-m);font-size:10px;color:var(--text-dim);white-space:nowrap;}
+.cev-n{flex:1;}
+.cev-tb{font-size:9px;padding:1px 6px;border-radius:8px;}
+.cd-empty{font-size:11px;color:var(--text-muted);padding:6px 0;}
+
+/* MODALS */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;z-index:100;backdrop-filter:blur(4px);}
+.overlay.hidden{display:none;}
+.modal{background:var(--surface);border:1px solid var(--border-light);border-radius:12px;padding:22px;width:440px;max-width:90vw;max-height:80vh;overflow-y:auto;}
+.modal h3{font-size:15px;margin-bottom:13px;}
+.mf{margin-bottom:9px;}
+.mf label{display:block;font-size:11px;color:var(--text-dim);margin-bottom:3px;}
+.mf input,.mf select{width:100%;padding:7px 9px;background:var(--surface3);border:1px solid var(--border);border-radius:var(--rs);color:var(--text);font-family:var(--font-m);font-size:12px;outline:none;}
+.mf input:focus,.mf select:focus{border-color:var(--accent);}
+.mf input[type=password]{letter-spacing:2px;}
+.mnote{font-size:10px;color:var(--text-muted);line-height:1.7;margin-top:6px;}
+.mnote a{color:var(--accent);text-decoration:none;}
+.ma{display:flex;gap:6px;justify-content:flex-end;margin-top:12px;}
+.empty{text-align:center;padding:48px 20px;color:var(--text-muted);}
+.empty .ico{font-size:32px;margin-bottom:10px;opacity:.4;}
+.empty p{font-size:12px;}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>StudyFlow</h1>
+    <span class="sub">学習タスク管理</span>
+    <span id="clock"></span>
+  </header>
+  <div class="main">
+    <nav class="nav">
+      <button class="nav-tab active" data-tab="all" onclick="sw('all')">
+        <span class="dot" style="background:var(--accent)"></span>すべて
+        <span class="cnt" id="cnt-all">0</span>
+      </button>
+      <div class="nav-sep"></div>
+      <button class="nav-tab" data-tab="塾" onclick="sw('塾')">
+        <span class="dot" style="background:var(--c-juku)"></span>塾
+        <span class="cnt" id="cnt-塾">0</span>
+      </button>
+      <button class="nav-tab" data-tab="学校" onclick="sw('学校')">
+        <span class="dot" style="background:var(--c-gakko)"></span>学校
+        <span class="cnt" id="cnt-学校">0</span>
+      </button>
+      <button class="nav-tab" data-tab="自学" onclick="sw('自学')">
+        <span class="dot" style="background:var(--c-jigaku)"></span>自学
+        <span class="cnt" id="cnt-自学">0</span>
+      </button>
+      <button class="nav-tab" data-tab="その他" onclick="sw('その他')">
+        <span class="dot" style="background:var(--c-other)"></span>その他
+        <span class="cnt" id="cnt-その他">0</span>
+      </button>
+      <div class="nav-sep"></div>
+      <button class="nav-tab" data-tab="calendar" onclick="sw('calendar')">
+        <span class="dot" style="background:var(--text-dim)"></span>📅 カレンダー
+      </button>
+      <div class="nav-bot">
+        <button class="nav-tab" style="font-size:12px;padding:7px 10px;gap:6px" onclick="openGhModal()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+          GitHub同期
+        </button>
+        <div class="sync-st" id="sync-st">未設定</div>
+      </div>
+    </nav>
+    <div class="right" id="right"></div>
+  </div>
+</div>
+
+<!-- GitHub modal -->
+<div class="overlay hidden" id="gh-modal">
+  <div class="modal">
+    <h3>🔗 GitHub同期設定</h3>
+    <div class="mf"><label>GitHubユーザー名</label><input id="gh-user" type="text" placeholder="your-username"></div>
+    <div class="mf"><label>リポジトリ名</label><input id="gh-repo" type="text" placeholder="study-todo-data"></div>
+    <div class="mf"><label>Personal Access Token（Contents: Read/Write）</label><input id="gh-token" type="password" placeholder="ghp_xxxxxxxxxxxx"></div>
+    <div class="mf"><label>保存ファイル名</label><input id="gh-file" type="text" value="tasks.json"></div>
+    <p class="mnote">トークンはこのブラウザのlocalStorageにのみ保存されます。<br>
+    <a href="https://github.com/settings/tokens/new" target="_blank">トークン作成ページ →</a>（Fine-grained tokens: Contents Read/Write）</p>
+    <div class="ma">
+      <button class="btn-no" onclick="closeGhModal()">キャンセル</button>
+      <button class="btn-ok" onclick="saveGhCfg()">保存 &amp; テスト</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit modal -->
+<div class="overlay hidden" id="em">
+  <div class="modal">
+    <h3 id="em-h">編集</h3>
+    <div id="em-b"></div>
+    <div class="ma">
+      <button class="btn-no" onclick="closeEM()">キャンセル</button>
+      <button class="btn-ok" onclick="commitEM()">保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════
+//  MODEL
+//  parents = [{
+//    id, tab, type, title, subject, expanded,
+//    subtasks: [subtask…]
+//  }]
+//  subtask = {
+//    id, title, range, deadline,
+//    totalItems, progress, done, expanded,
+//    subtasks: [subtask…]   ← infinite nesting
+//  }
+// ═══════════════════════
+const TABS=['塾','学校','自学','その他'];
+const TYPES=['問題集','教科書','単語帳','授業復習','汎用'];
+const DAYS=['日','月','火','水','木','金','土'];
+const TC={塾:'var(--c-juku)',学校:'var(--c-gakko)',自学:'var(--c-jigaku)','その他':'var(--c-other)',all:'var(--accent)'};
+
+let P=[], curTab='all', ghCfg=null;
+let formTarget=null; // {containerId, rootId, parentId}
+let emTarget=null;
+
+// ─ INIT ─
+function init(){
+  try{const d=localStorage.getItem('sf3');if(d)P=JSON.parse(d);}catch(e){}
+  try{const g=localStorage.getItem('sf3-gh');if(g){ghCfg=JSON.parse(g);ust(`@${ghCfg.user}`);autoLoad();}}catch(e){}
+  render(); setInterval(()=>{updateClock();render();},30000); updateClock();
+}
+function saveL(){localStorage.setItem('sf3',JSON.stringify(P));schedGh();}
+function ust(t){document.getElementById('sync-st').textContent=t;}
+function updateClock(){const n=new Date();document.getElementById('clock').textContent=n.toLocaleDateString('ja-JP')+' '+n.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'});}
+
+// ─ TREE UTILS ─
+const gid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+function find(id,arr){for(const n of arr){if(n.id===id)return n;const f=find(id,n.subtasks||[]);if(f)return f;}return null;}
+function remove(id,arr){for(let i=0;i<arr.length;i++){if(arr[i].id===id){arr.splice(i,1);return true;}if(remove(id,arr[i].subtasks||[]))return true;}return false;}
+function clone(o){return JSON.parse(JSON.stringify(o));}
+function reId(n){n.id=gid();(n.subtasks||[]).forEach(reId);return n;}
+
+// ─ DEADLINE ─
+function collectDL(node){const r=[];if(node.deadline)r.push(node.deadline);(node.subtasks||[]).forEach(s=>collectDL(s).forEach(d=>r.push(d)));return r;}
+function dlSummary(node){
+  const dls=collectDL(node);if(!dls.length)return null;
+  const now=Date.now();let ex=0,near=null;
+  dls.forEach(dl=>{const t=new Date(dl).getTime();if(t<now)ex++;else if(!near||t<new Date(near).getTime())near=dl;});
+  return{ex,near};
+}
+function fmtDL(dl){
+  const diff=new Date(dl).getTime()-Date.now();
+  if(diff<0)return{text:'Expired',cls:'expired'};
+  const m=Math.floor(diff/60000);if(m<60)return{text:`${m}分後`,cls:'urgent'};
+  const h=Math.floor(diff/3600000);if(h<24)return{text:`${h}時間後`,cls:h<6?'urgent':'warn'};
+  const d=Math.floor(diff/86400000);return{text:`${d}日後`,cls:d<=3?'warn':'ok'};
+}
+function sumBadges(node){
+  const s=dlSummary(node);if(!s)return '';const p=[];
+  if(s.ex)p.push(`<span class="badge expired">✕ Ex×${s.ex}</span>`);
+  if(s.near){const f=fmtDL(s.near);p.push(`<span class="badge ${f.cls}">⏱ ${f.text}</span>`);}
+  return p.join('');
+}
+function fmtDate(dl){const d=new Date(dl);return`${d.getMonth()+1}/${d.getDate()} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;}
+
+// leaf progress
+function leafProg(node){
+  const subs=node.subtasks||[];if(!subs.length)return null;
+  let tot=0,done=0;
+  function wk(n){if(!(n.subtasks&&n.subtasks.length)){tot++;if(n.done)done++;}else n.subtasks.forEach(wk);}
+  subs.forEach(wk);return{tot,done};
+}
+
+// ─ RENDER ─
+function render(){
+  updateCounts();
+  const el=document.getElementById('right');
+  if(curTab==='calendar'){renderCal(el);return;}
+  const parents=curTab==='all'?P:P.filter(p=>p.tab===curTab);
+  const lbl=curTab==='all'?'すべての教材':curTab;
+  const clr=TC[curTab]||'var(--accent)';
+  el.innerHTML=`
+  <div class="ph">
+    <div class="ph-title"><div class="ph-bar" style="background:${clr}"></div>${lbl}</div>
+    <button class="add-parent-btn" onclick="showParentForm()">＋ 教材を追加</button>
+  </div>
+  <div id="pf-root"></div>
+  <div class="parent-list">
+    ${parents.length?parents.map(p=>renderParent(p)).join(''):`<div class="empty"><div class="ico">📚</div><p>教材がありません。<br>「＋ 教材を追加」で追加してください。</p></div>`}
+  </div>`;
+}
+
+function renderParent(p){
+  const clr=TC[p.tab]||'var(--accent)';
+  const hasEx=(dlSummary(p)||{}).ex>0;
+  const prog=leafProg(p);
+  const progB=prog?`<span class="badge prog">📋 ${prog.done}/${prog.tot}</span>`:'';
+  return `
+  <div class="parent-card${hasEx?' has-expired':''}" id="pc-${p.id}">
+    <div class="pc-head">
+      <div class="pc-accent" style="background:${clr}"></div>
+      <div class="pc-info">
+        <div class="pc-title">${esc(p.title)}</div>
+        <div class="pc-meta">
+          <span class="tag t-${p.type}">${p.type}</span>
+          <span class="tag" style="background:rgba(255,255,255,.04)">${p.tab}</span>
+          ${p.subject?`<span class="tag">📖 ${esc(p.subject)}</span>`:''}
+        </div>
+      </div>
+      <div class="pc-summary">${progB}${sumBadges(p)}</div>
+      <div class="pc-actions">
+        <button class="act" onclick="openEM('p','${p.id}')">✏️</button>
+        <button class="act" onclick="dupP('${p.id}')">⧉</button>
+        <button class="act del" onclick="delP('${p.id}')">🗑</button>
+      </div>
+    </div>
+    <div class="pc-strip">
+      <button class="tog-btn${p.expanded?' open':''}" id="tog-${p.id}" onclick="togP('${p.id}')">
+        <i class="chev">▶</i> タスク (${(p.subtasks||[]).length})
+      </button>
+      <button class="add-sub-btn" onclick="showSubForm('${p.id}','${p.id}')">＋ タスク追加</button>
+    </div>
+    <div class="sub-area${p.expanded?'':' hidden'}" id="sa-${p.id}">
+      <div id="sf-${p.id}"></div>
+      <div id="sc-${p.id}">
+        ${(p.subtasks||[]).map(s=>renderSub(s,p.id)).join('')}
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderSub(s,rootId,indent=0){
+  const dlB=s.deadline?(()=>{const f=fmtDL(s.deadline);return`<span class="badge ${f.cls}">⏱ ${f.text}</span>`;})():'';
+  const hasNested=s.subtasks&&s.subtasks.length>0;
+  const subSum=hasNested?sumBadges(s):'';
+  const ml=indent>0?`style="margin-left:${indent*18}px"`:'';
+  return `
+  <div ${ml}>
+    <div class="sub-card${s.done?' done-c':''}${(s.deadline&&new Date(s.deadline)<Date.now())?' exp-c':''}" id="card-${s.id}">
+      <div class="sc-head">
+        <div class="sc-check${s.done?' ck':''}" onclick="togDone('${s.id}','${rootId}')"></div>
+        <div class="sc-body">
+          <div class="sc-title${s.done?' done':''}">${esc(s.title)}</div>
+          <div class="sc-tags">
+            ${s.range?`<span class="tag">📄 ${esc(s.range)}</span>`:''}
+            ${s.deadline?`<span class="tag">🗓 ${fmtDate(s.deadline)}</span>`:''}
+            ${dlB}${subSum}
+          </div>
+        </div>
+        <div class="sc-acts">
+          <button class="act" style="font-size:11px" onclick="openEM('s','${s.id}','${rootId}')">✏️</button>
+          <button class="act" style="font-size:11px" onclick="dupS('${s.id}','${rootId}')">⧉</button>
+          <button class="act del" style="font-size:11px" onclick="delS('${s.id}','${rootId}')">🗑</button>
+        </div>
+      </div>
+      ${s.totalItems>1?`
+      <div class="sc-prog">
+        <span class="prog-lbl">${s.progress||0}/${s.totalItems}</span>
+        <input type="range" class="prog-slider" min="0" max="${s.totalItems}" value="${s.progress||0}"
+          oninput="updProg('${s.id}','${rootId}',this.value)">
+        <span class="prog-pct" id="pp-${s.id}">${Math.round((s.progress||0)/s.totalItems*100)}%</span>
+      </div>`:''}
+      <div class="sc-foot">
+        <button class="tog-btn${s.expanded?' open':''}" id="tog-${s.id}" onclick="togS('${s.id}','${rootId}')">
+          <i class="chev">▶</i> サブタスク (${(s.subtasks||[]).length})
+        </button>
+        <button class="add-sub-btn" onclick="showSubForm('${rootId}','${s.id}')">＋</button>
+      </div>
+    </div>
+    <div id="sf-${s.id}"></div>
+    <div class="nested${s.expanded?'':' hidden'}" id="sa-${s.id}">
+      ${(s.subtasks||[]).map(c=>renderSub(c,rootId,indent+1)).join('')}
+    </div>
+  </div>`;
+}
+
+// ─ COUNTS ─
+function updateCounts(){
+  document.getElementById('cnt-all').textContent=P.length;
+  TABS.forEach(t=>{const e=document.getElementById(`cnt-${t}`);if(e)e.textContent=P.filter(p=>p.tab===t).length;});
+}
+
+// ─ TAB SWITCH ─
+function sw(tab){
+  curTab=tab;
+  document.querySelectorAll('.nav-tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
+  render();
+}
+
+// ─ TOGGLES ─
+function togP(id){
+  const p=P.find(x=>x.id===id);if(!p)return;
+  p.expanded=!p.expanded;saveL();
+  document.getElementById(`sa-${id}`)?.classList.toggle('hidden',!p.expanded);
+  document.getElementById(`tog-${id}`)?.classList.toggle('open',p.expanded);
+}
+function togS(id,rootId){
+  const r=P.find(x=>x.id===rootId);if(!r)return;
+  const s=find(id,r.subtasks||[]);if(!s)return;
+  s.expanded=!s.expanded;saveL();
+  document.getElementById(`sa-${id}`)?.classList.toggle('hidden',!s.expanded);
+  document.getElementById(`tog-${id}`)?.classList.toggle('open',s.expanded);
+}
+function togDone(id,rootId){
+  const r=P.find(x=>x.id===rootId);if(!r)return;
+  const s=find(id,r.subtasks||[]);if(s){s.done=!s.done;saveL();render();}
+}
+function updProg(id,rootId,val){
+  const r=P.find(x=>x.id===rootId);if(!r)return;
+  const s=find(id,r.subtasks||[]);
+  if(s){s.progress=parseInt(val);const e=document.getElementById(`pp-${id}`);if(e)e.textContent=Math.round(s.progress/s.totalItems*100)+'%';saveL();}
+}
+
+// ─ PARENT FORM ─
+function showParentForm(){
+  closeForm();formTarget={type:'parent',containerId:'pf-root',rootId:null,parentId:null};
+  const defTab=curTab==='all'||curTab==='calendar'?'塾':curTab;
+  document.getElementById('pf-root').innerHTML=`
+  <div class="add-form" style="margin-bottom:12px">
+    <div class="fr">
+      <input class="fi" id="pf-title" placeholder="教材名（例: チャート式数学II・B）" style="flex:2">
+      <select class="fsel" id="pf-tab">${TABS.map(t=>`<option value="${t}"${t===defTab?' selected':''}>${t}</option>`).join('')}</select>
+      <select class="fsel" id="pf-type">${TYPES.map(t=>`<option value="${t}">${t}</option>`).join('')}</select>
+    </div>
+    <div class="fr">
+      <span class="flbl">教材詳細</span>
+      <input class="fi" id="pf-sub" placeholder="例: 数学II・B、システム英単語など（省略可）">
+    </div>
+    <div class="fa">
+      <button class="btn-no" onclick="closeForm()">キャンセル</button>
+      <button class="btn-ok" onclick="addParent()">追加</button>
+    </div>
+  </div>`;
+  document.getElementById('pf-title').focus();
+}
+function addParent(){
+  const t=document.getElementById('pf-title')?.value.trim();if(!t){document.getElementById('pf-title')?.focus();return;}
+  P.push({id:gid(),tab:document.getElementById('pf-tab').value,type:document.getElementById('pf-type').value,
+    title:t,subject:document.getElementById('pf-sub')?.value.trim()||'',subtasks:[],expanded:true});
+  saveL();closeForm();render();
+}
+
+// ─ SUB FORM ─
+function typeHint(type){
+  if(type==='問題集')return{t:'問題番号・範囲（例: No.12〜18）',r:'ページ（例: p.45）'};
+  if(type==='教科書')return{t:'ページ範囲（例: pp.120-135）',r:'章・節名'};
+  if(type==='単語帳')return{t:'見出し語番号（例: #201〜#250）',r:'セクション名'};
+  if(type==='授業復習')return{t:'内容（例: 関係代名詞ノートまとめ）',r:'日付・ページ'};
+  return{t:'タスク名',r:'詳細'};
+}
+function showSubForm(rootId,parentId){
+  closeForm();
+  formTarget={type:'sub',containerId:`sf-${parentId}`,rootId,parentId};
+  const r=P.find(x=>x.id===rootId);
+  const hint=typeHint(r?r.type:'汎用');
+  const container=document.getElementById(`sf-${parentId}`);if(!container)return;
+
+  // ensure parent is expanded
+  if(parentId===rootId){
+    if(r&&!r.expanded){r.expanded=true;document.getElementById(`sa-${rootId}`)?.classList.remove('hidden');document.getElementById(`tog-${rootId}`)?.classList.add('open');}
+  } else if(r){
+    const pn=find(parentId,r.subtasks||[]);
+    if(pn&&!pn.expanded){pn.expanded=true;document.getElementById(`sa-${parentId}`)?.classList.remove('hidden');document.getElementById(`tog-${parentId}`)?.classList.add('open');}
+  }
+
+  container.innerHTML=`
+  <div class="add-form">
+    <div class="fr">
+      <input class="fi" id="sf-ti" placeholder="${hint.t}" style="flex:2">
+      <input class="fi" id="sf-ra" placeholder="${hint.r}" style="flex:1;min-width:100px">
+    </div>
+    <div class="fr">
+      <span class="flbl">締め切り</span>
+      <input class="fi" type="datetime-local" id="sf-dl" style="flex:1">
+      <span class="flbl">タスク数</span>
+      <select class="fsel" id="sf-tot">
+        <option value="1">なし</option>
+        ${[5,10,15,20,25,30,40,50,60,80,100,120,150,200].map(n=>`<option value="${n}">${n}</option>`).join('')}
+      </select>
+    </div>
+    <div class="fa">
+      <button class="btn-no" onclick="closeForm()">キャンセル</button>
+      <button class="btn-ok" onclick="addSub()">追加</button>
+    </div>
+  </div>`;
+  document.getElementById('sf-ti').focus();
+}
+function addSub(){
+  if(!formTarget)return;
+  const{rootId,parentId}=formTarget;
+  const title=document.getElementById('sf-ti')?.value.trim();if(!title){document.getElementById('sf-ti')?.focus();return;}
+  const dl=document.getElementById('sf-dl')?.value;
+  const tot=parseInt(document.getElementById('sf-tot')?.value||'1');
+  const range=document.getElementById('sf-ra')?.value.trim()||'';
+  const sub={id:gid(),title,range,deadline:dl||null,totalItems:tot,progress:0,done:false,subtasks:[],expanded:false};
+
+  const r=P.find(x=>x.id===rootId);if(!r)return;
+  if(parentId===rootId){r.subtasks.push(sub);r.expanded=true;}
+  else{const pn=find(parentId,r.subtasks||[]);if(pn){pn.subtasks=pn.subtasks||[];pn.subtasks.push(sub);pn.expanded=true;}}
+  saveL();closeForm();render();
+}
+function closeForm(){
+  if(formTarget){const e=document.getElementById(formTarget.containerId);if(e)e.innerHTML='';formTarget=null;}
+}
+
+// ─ ACTIONS ─
+function delP(id){
+  if(!confirm('この教材とすべてのタスクを削除しますか？'))return;
+  const i=P.findIndex(x=>x.id===id);if(i>=0){P.splice(i,1);saveL();render();}
+}
+function dupP(id){
+  const p=P.find(x=>x.id===id);if(!p)return;
+  const c=reId(clone(p));c.title+='（コピー）';
+  P.splice(P.findIndex(x=>x.id===id)+1,0,c);saveL();render();
+}
+function delS(id,rootId){
+  if(!confirm('このタスクを削除しますか？'))return;
+  const r=P.find(x=>x.id===rootId);if(r){remove(id,r.subtasks||[]);saveL();render();}
+}
+function dupS(id,rootId){
+  const r=P.find(x=>x.id===rootId);if(!r)return;
+  const node=find(id,r.subtasks||[]);if(!node)return;
+  const c=reId(clone(node));c.title+='（コピー）';
+  function ins(arr){for(let i=0;i<arr.length;i++){if(arr[i].id===id){arr.splice(i+1,0,c);return true;}if(ins(arr[i].subtasks||[]))return true;}return false;}
+  ins(r.subtasks||[]);saveL();render();
+}
+
+// ─ EDIT MODAL ─
+function openEM(kind,id,rootId){
+  emTarget={kind,id,rootId};
+  if(kind==='p'){
+    const p=P.find(x=>x.id===id);if(!p)return;
+    document.getElementById('em-h').textContent='📚 教材を編集';
+    document.getElementById('em-b').innerHTML=`
+      <div class="mf"><label>教材名</label><input id="em-tv" value="${esc(p.title)}"></div>
+      <div class="mf"><label>タブ</label><select id="em-tab">${TABS.map(t=>`<option value="${t}"${t===p.tab?' selected':''}>${t}</option>`).join('')}</select></div>
+      <div class="mf"><label>タイプ</label><select id="em-type">${TYPES.map(t=>`<option value="${t}"${t===p.type?' selected':''}>${t}</option>`).join('')}</select></div>
+      <div class="mf"><label>教材詳細</label><input id="em-sub" value="${esc(p.subject||'')}"></div>`;
+  } else {
+    const r=P.find(x=>x.id===rootId);const s=r?find(id,r.subtasks||[]):null;if(!s)return;
+    const dlv=s.deadline?s.deadline.slice(0,16):'';
+    document.getElementById('em-h').textContent='✏️ タスクを編集';
+    document.getElementById('em-b').innerHTML=`
+      <div class="mf"><label>タスク名</label><input id="em-tv" value="${esc(s.title)}"></div>
+      <div class="mf"><label>詳細・範囲</label><input id="em-range" value="${esc(s.range||'')}"></div>
+      <div class="mf"><label>締め切り</label><input id="em-dl" type="datetime-local" value="${dlv}"></div>
+      <div class="mf"><label>タスク数</label><select id="em-tot">
+        <option value="1"${s.totalItems===1?' selected':''}>なし</option>
+        ${[5,10,15,20,25,30,40,50,60,80,100,120,150,200].map(n=>`<option value="${n}"${s.totalItems===n?' selected':''}>${n}</option>`).join('')}
+      </select></div>`;
+  }
+  document.getElementById('em').classList.remove('hidden');
+}
+function commitEM(){
+  if(!emTarget)return;
+  const{kind,id,rootId}=emTarget;
+  if(kind==='p'){
+    const p=P.find(x=>x.id===id);if(p){
+      p.title=document.getElementById('em-tv').value.trim()||p.title;
+      p.tab=document.getElementById('em-tab').value;
+      p.type=document.getElementById('em-type').value;
+      p.subject=document.getElementById('em-sub').value.trim();
+    }
+  } else {
+    const r=P.find(x=>x.id===rootId);const s=r?find(id,r.subtasks||[]):null;if(s){
+      s.title=document.getElementById('em-tv').value.trim()||s.title;
+      s.range=document.getElementById('em-range').value.trim();
+      s.deadline=document.getElementById('em-dl').value||null;
+      s.totalItems=parseInt(document.getElementById('em-tot').value||'1');
+    }
+  }
+  saveL();closeEM();render();
+}
+function closeEM(){document.getElementById('em').classList.add('hidden');emTarget=null;}
+
+// ─ CALENDAR ─
+function renderCal(el){
+  const evs=[];
+  P.forEach(p=>{
+    function col(node){
+      if(node.deadline)evs.push({dl:new Date(node.deadline),title:node.title,tab:p.tab,done:node.done});
+      (node.subtasks||[]).forEach(col);
+    }
+    (p.subtasks||[]).forEach(col);
+  });
+  evs.sort((a,b)=>a.dl-b.dl);
+  const byD={};evs.forEach(e=>{const k=e.dl.toDateString();if(!byD[k])byD[k]=[];byD[k].push(e);});
+  const today=new Date();today.setHours(0,0,0,0);
+  let rows='';
+  for(let i=0;i<60;i++){
+    const d=new Date(today);d.setDate(d.getDate()+i);
+    const k=d.toDateString();
+    const de=byD[k]||[];
+    if(!de.length&&i>0)continue;
+    const iT=i===0;
+    rows+=`
+    <div class="cal-day" data-date="${k}">
+      <div class="cd-left">
+        <div class="cd-num${iT?' tod':''}">${d.getDate()}</div>
+        <div class="cd-sub${iT?' tod':''}">${d.getMonth()+1}月${DAYS[d.getDay()]}</div>
+      </div>
+      <div class="cd-right">
+        ${de.length?de.map(ev=>{
+          const xp=ev.dl.getTime()<Date.now();
+          const clr=TC[ev.tab]||'var(--accent)';
+          const hm=ev.dl.getHours().toString().padStart(2,'0')+':'+ev.dl.getMinutes().toString().padStart(2,'0');
+          return`<div class="cal-ev${xp?' xp':''}" data-tab="${ev.tab}" style="border-left-color:${clr}">
+            <span class="cev-t">${hm}</span>
+            <span class="cev-n">${esc(ev.title)}</span>
+            <span class="cev-tb" style="background:${clr}1a;color:${clr}">${ev.tab}</span>
+          </div>`;
+        }).join(''):`<div class="cd-empty">タスクなし</div>`}
+      </div>
+    </div>`;
+  }
+  el.innerHTML=`
+  <div style="padding:20px 24px">
+    <div style="font-size:17px;font-weight:700;margin-bottom:14px">📅 締め切りカレンダー</div>
+    <div class="cal-filter">
+      ${['all','塾','学校','自学','その他'].map(t=>`<button class="cf-tab${t==='all'?' active':''}" onclick="calF('${t}',this)">${t==='all'?'すべて':t}</button>`).join('')}
+    </div>
+    ${rows}
+  </div>`;
+}
+function calF(tab,btn){
+  document.querySelectorAll('.cf-tab').forEach(b=>b.classList.remove('active'));btn.classList.add('active');
+  document.querySelectorAll('.cal-ev').forEach(e=>{e.style.display=tab==='all'||e.dataset.tab===tab?'':'none';});
+}
+
+// ─ GITHUB ─
+function openGhModal(){
+  if(ghCfg){
+    document.getElementById('gh-user').value=ghCfg.user||'';
+    document.getElementById('gh-repo').value=ghCfg.repo||'';
+    document.getElementById('gh-token').value=ghCfg.token||'';
+    document.getElementById('gh-file').value=ghCfg.file||'tasks.json';
+  }
+  document.getElementById('gh-modal').classList.remove('hidden');
+}
+function closeGhModal(){document.getElementById('gh-modal').classList.add('hidden');}
+async function saveGhCfg(){
+  const cfg={user:document.getElementById('gh-user').value.trim(),repo:document.getElementById('gh-repo').value.trim(),
+    token:document.getElementById('gh-token').value.trim(),file:document.getElementById('gh-file').value.trim()||'tasks.json'};
+  if(!cfg.user||!cfg.repo||!cfg.token){alert('すべて入力してください');return;}
+  ghCfg=cfg;localStorage.setItem('sf3-gh',JSON.stringify(cfg));
+  try{await ghSave(cfg,P);ust(`✓ @${cfg.user}`);alert('✅ GitHub同期の設定が完了しました！');closeGhModal();}
+  catch(e){alert('❌ 接続失敗: '+e.message);}
+}
+async function ghSave(cfg,data){
+  const content=btoa(unescape(encodeURIComponent(JSON.stringify(data,null,2))));
+  let sha=null;
+  try{const r=await fetch(`https://api.github.com/repos/${cfg.user}/${cfg.repo}/contents/${cfg.file}`,
+    {headers:{Authorization:`token ${cfg.token}`,Accept:'application/vnd.github.v3+json'}});
+    if(r.ok)sha=(await r.json()).sha;}catch(e){}
+  const body={message:`SF sync ${new Date().toISOString()}`,content};if(sha)body.sha=sha;
+  const res=await fetch(`https://api.github.com/repos/${cfg.user}/${cfg.repo}/contents/${cfg.file}`,
+    {method:'PUT',headers:{Authorization:`token ${cfg.token}`,Accept:'application/vnd.github.v3+json','Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(!res.ok){const e=await res.json();throw new Error(e.message);}
+  ust(`✓ ${new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}`);
+}
+async function autoLoad(){
+  if(!ghCfg)return;const c=ghCfg;
+  try{const r=await fetch(`https://api.github.com/repos/${c.user}/${c.repo}/contents/${c.file}`,
+    {headers:{Authorization:`token ${c.token}`,Accept:'application/vnd.github.v3+json'}});
+    if(!r.ok)return;const d=await r.json();
+    P=JSON.parse(decodeURIComponent(escape(atob(d.content.replace(/\n/g,'')))));
+    localStorage.setItem('sf3',JSON.stringify(P));ust('↓ ロード完了');render();}
+  catch(e){ust('⚠ ロード失敗');}
+}
+let ghT=null;
+function schedGh(){
+  if(!ghCfg)return;clearTimeout(ghT);
+  ghT=setTimeout(()=>ghSave(ghCfg,P).catch(()=>ust('⚠ 保存失敗')),2500);
+}
+
+function esc(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+init();
+</script>
+</body>
+</html>
