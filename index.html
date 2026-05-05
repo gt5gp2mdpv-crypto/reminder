@@ -1,0 +1,1195 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StudyFlow — 学習タスク管理</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&family=Noto+Sans+JP:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0e0f14;
+  --surface: #161820;
+  --surface2: #1e2030;
+  --surface3: #252840;
+  --border: #2e3155;
+  --border-light: #3a3f6a;
+  --accent: #7c85f5;
+  --accent2: #f5a97f;
+  --accent3: #a6e3a1;
+  --accent4: #f38ba8;
+  --text: #cdd6f4;
+  --text-dim: #7f849c;
+  --text-muted: #45475a;
+  --tab-塾: #f5a97f;
+  --tab-学校: #89dceb;
+  --tab-自学: #a6e3a1;
+  --tab-その他: #cba6f7;
+  --expired: #f38ba8;
+  --warning: #f9e2af;
+  --font-display: 'DM Serif Display', serif;
+  --font-mono: 'DM Mono', monospace;
+  --font-jp: 'Noto Sans JP', sans-serif;
+  --radius: 10px;
+  --radius-sm: 6px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font-jp); }
+
+/* ── HEADER ── */
+header {
+  padding: 20px 24px 0;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+header h1 {
+  font-family: var(--font-display);
+  font-size: 26px;
+  color: var(--accent);
+  letter-spacing: -0.5px;
+}
+header span { font-size: 12px; color: var(--text-dim); font-family: var(--font-mono); }
+
+/* ── LAYOUT ── */
+.app { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+.main-area { display: flex; flex: 1; overflow: hidden; }
+.left-panel { width: 280px; flex-shrink: 0; display: flex; flex-direction: column; border-right: 1px solid var(--border); overflow: hidden; }
+.right-panel { flex: 1; overflow-y: auto; padding: 0; }
+
+/* ── TABS ── */
+.tabs { display: flex; flex-direction: column; gap: 4px; padding: 16px 12px; }
+.tab-btn {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; border-radius: var(--radius-sm);
+  border: none; background: transparent; color: var(--text-dim);
+  cursor: pointer; text-align: left; font-family: var(--font-jp);
+  font-size: 14px; font-weight: 500; transition: all 0.15s;
+  position: relative;
+}
+.tab-btn:hover { background: var(--surface2); color: var(--text); }
+.tab-btn.active { background: var(--surface2); color: var(--text); }
+.tab-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.tab-btn[data-tab="塾"] .tab-dot { background: var(--tab-塾); }
+.tab-btn[data-tab="学校"] .tab-dot { background: var(--tab-学校); }
+.tab-btn[data-tab="自学"] .tab-dot { background: var(--tab-自学); }
+.tab-btn[data-tab="その他"] .tab-dot { background: var(--tab-その他); }
+.tab-btn[data-tab="all"] .tab-dot { background: linear-gradient(135deg, var(--accent), var(--accent2)); }
+.tab-count {
+  margin-left: auto; font-family: var(--font-mono); font-size: 11px;
+  background: var(--surface3); color: var(--text-dim);
+  padding: 2px 7px; border-radius: 20px;
+}
+
+/* ── CALENDAR BUTTON ── */
+.cal-btn {
+  margin: 8px 12px; padding: 10px 14px;
+  background: transparent; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text-dim);
+  cursor: pointer; font-family: var(--font-jp); font-size: 13px;
+  display: flex; align-items: center; gap: 8px; transition: all 0.15s;
+}
+.cal-btn:hover { border-color: var(--accent); color: var(--accent); }
+.cal-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(124,133,245,0.08); }
+
+.left-divider { height: 1px; background: var(--border); margin: 8px 12px; }
+
+/* ── GITHUB SYNC ── */
+.github-section { padding: 12px; margin-top: auto; border-top: 1px solid var(--border); }
+.github-btn {
+  width: 100%; padding: 9px 14px;
+  background: transparent; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text-dim);
+  cursor: pointer; font-family: var(--font-jp); font-size: 12px;
+  display: flex; align-items: center; gap: 8px; transition: all 0.15s;
+}
+.github-btn:hover { border-color: var(--accent2); color: var(--accent2); }
+.sync-status { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); padding: 4px 14px; }
+
+/* ── TASK LIST ── */
+.task-panel { padding: 20px 24px; }
+.panel-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+.panel-title { font-size: 18px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+.panel-color-bar { width: 4px; height: 20px; border-radius: 2px; }
+
+/* ── ADD TASK BUTTON ── */
+.add-task-btn {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 16px; border-radius: var(--radius-sm);
+  background: var(--surface2); border: 1px dashed var(--border-light);
+  color: var(--text-dim); cursor: pointer; font-family: var(--font-jp); font-size: 13px;
+  transition: all 0.15s;
+}
+.add-task-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(124,133,245,0.06); }
+
+/* ── TASK CARD ── */
+.task-list { display: flex; flex-direction: column; gap: 10px; }
+.task-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden; transition: border-color 0.15s;
+}
+.task-card:hover { border-color: var(--border-light); }
+.task-card.expired-card { border-color: rgba(243,139,168,0.4); }
+
+.task-header {
+  padding: 12px 14px;
+  display: flex; align-items: flex-start; gap: 10px;
+  cursor: pointer;
+}
+.task-check {
+  width: 18px; height: 18px; border-radius: 4px;
+  border: 2px solid var(--border-light); background: transparent;
+  flex-shrink: 0; margin-top: 1px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s;
+}
+.task-check.checked { background: var(--accent3); border-color: var(--accent3); }
+.task-check.checked::after { content: '✓'; font-size: 11px; color: #1e2030; font-weight: 700; }
+
+.task-body { flex: 1; min-width: 0; }
+.task-title-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.task-title { font-size: 14px; font-weight: 500; }
+.task-title.done { text-decoration: line-through; color: var(--text-dim); }
+
+.task-meta-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.tag {
+  font-size: 10px; font-family: var(--font-mono);
+  padding: 2px 7px; border-radius: 20px;
+  background: var(--surface3); color: var(--text-dim);
+}
+.tag.type-問題集 { background: rgba(245,169,127,0.15); color: var(--tab-塾); }
+.tag.type-教科書 { background: rgba(137,220,235,0.15); color: var(--tab-学校); }
+.tag.type-単語帳 { background: rgba(166,227,161,0.15); color: var(--tab-自学); }
+.tag.type-授業復習 { background: rgba(203,166,247,0.15); color: var(--tab-その他); }
+.tag.type-汎用 { background: rgba(124,133,245,0.15); color: var(--accent); }
+
+.deadline-badge {
+  font-size: 10px; font-family: var(--font-mono);
+  padding: 2px 8px; border-radius: 20px;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.deadline-badge.ok { background: rgba(166,227,161,0.12); color: var(--accent3); }
+.deadline-badge.warn { background: rgba(249,226,175,0.12); color: var(--warning); }
+.deadline-badge.urgent { background: rgba(243,139,168,0.12); color: var(--expired); }
+.deadline-badge.expired { background: rgba(243,139,168,0.2); color: var(--expired); }
+
+/* ── PROGRESS ── */
+.task-progress { padding: 0 14px 12px; }
+.progress-row { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.progress-label { font-size: 11px; color: var(--text-dim); font-family: var(--font-mono); white-space: nowrap; }
+.progress-slider {
+  flex: 1; -webkit-appearance: none; appearance: none;
+  height: 4px; border-radius: 2px; background: var(--surface3);
+  outline: none; cursor: pointer;
+}
+.progress-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 14px; height: 14px;
+  border-radius: 50%; background: var(--accent); cursor: pointer;
+  border: 2px solid var(--bg);
+}
+.progress-pct { font-size: 11px; font-family: var(--font-mono); color: var(--accent); width: 30px; text-align: right; }
+
+/* ── TASK ACTIONS ── */
+.task-actions { display: flex; gap: 6px; margin-left: auto; }
+.action-btn {
+  padding: 4px 8px; border-radius: 4px;
+  background: transparent; border: none; color: var(--text-muted);
+  cursor: pointer; font-size: 12px; transition: all 0.12s;
+}
+.action-btn:hover { background: var(--surface3); color: var(--text); }
+.action-btn.danger:hover { color: var(--expired); }
+
+/* ── SUBTASKS ── */
+.subtask-toggle {
+  padding: 0 14px 10px;
+  display: flex; align-items: center; gap: 6px;
+}
+.subtask-toggle-btn {
+  background: none; border: none; color: var(--text-muted);
+  font-size: 11px; font-family: var(--font-mono); cursor: pointer;
+  display: flex; align-items: center; gap: 4px; padding: 3px 6px;
+  border-radius: 4px; transition: all 0.12s;
+}
+.subtask-toggle-btn:hover { color: var(--text); background: var(--surface2); }
+.subtask-toggle-btn .chevron { transition: transform 0.2s; }
+.subtask-toggle-btn.open .chevron { transform: rotate(90deg); }
+
+.subtasks-container { padding: 0 8px 8px 28px; display: flex; flex-direction: column; gap: 6px; }
+.subtasks-container.hidden { display: none; }
+
+/* ── ADD TASK FORM ── */
+.add-task-form {
+  background: var(--surface2); border: 1px solid var(--border-light);
+  border-radius: var(--radius); padding: 16px; margin-top: 10px;
+}
+.form-row { display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.form-input {
+  flex: 1; min-width: 180px; padding: 8px 12px;
+  background: var(--surface3); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text);
+  font-family: var(--font-jp); font-size: 13px; outline: none;
+  transition: border-color 0.15s;
+}
+.form-input:focus { border-color: var(--accent); }
+.form-input::placeholder { color: var(--text-muted); }
+.form-select {
+  padding: 8px 12px; background: var(--surface3);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  color: var(--text); font-family: var(--font-jp); font-size: 13px;
+  outline: none; cursor: pointer;
+}
+.form-select:focus { border-color: var(--accent); }
+.form-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.btn-primary {
+  padding: 8px 18px; background: var(--accent); border: none;
+  border-radius: var(--radius-sm); color: white; font-family: var(--font-jp);
+  font-size: 13px; font-weight: 500; cursor: pointer; transition: opacity 0.15s;
+}
+.btn-primary:hover { opacity: 0.85; }
+.btn-cancel {
+  padding: 8px 14px; background: transparent; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text-dim); font-family: var(--font-jp);
+  font-size: 13px; cursor: pointer; transition: all 0.15s;
+}
+.btn-cancel:hover { border-color: var(--border-light); color: var(--text); }
+
+/* ── STUDY-TYPE SPECIFIC FIELDS ── */
+.type-fields { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.type-field-label { font-size: 11px; color: var(--text-dim); align-self: center; white-space: nowrap; }
+
+/* ── CALENDAR VIEW ── */
+.calendar-panel { padding: 20px 24px; }
+.cal-header { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
+.cal-title { font-size: 18px; font-weight: 700; }
+.cal-filter-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.cal-filter-tab {
+  padding: 4px 12px; border-radius: 20px; font-size: 11px;
+  border: 1px solid var(--border); background: transparent;
+  color: var(--text-dim); cursor: pointer; transition: all 0.15s;
+  font-family: var(--font-jp);
+}
+.cal-filter-tab.active { background: var(--accent); border-color: var(--accent); color: white; }
+
+.cal-timeline { display: flex; flex-direction: column; gap: 0; }
+.cal-day {
+  display: flex; gap: 0;
+  border-bottom: 1px solid var(--border);
+}
+.cal-day:last-child { border-bottom: none; }
+.cal-day-header {
+  width: 80px; flex-shrink: 0; padding: 14px 12px;
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+}
+.cal-day-num { font-family: var(--font-mono); font-size: 22px; font-weight: 300; line-height: 1; }
+.cal-day-name { font-size: 10px; color: var(--text-dim); margin-top: 2px; }
+.cal-day-num.today { color: var(--accent); }
+.cal-day-name.today { color: var(--accent); }
+.cal-day-events { flex: 1; padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; }
+.cal-event {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 10px; border-radius: var(--radius-sm);
+  background: var(--surface2); border-left: 3px solid var(--accent);
+  font-size: 12px;
+}
+.cal-event.expired { border-left-color: var(--expired); opacity: 0.7; }
+.cal-event-time { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); white-space: nowrap; }
+.cal-event-title { flex: 1; }
+.cal-event-tab { font-size: 10px; padding: 1px 6px; border-radius: 10px; }
+.cal-no-events { padding: 12px; color: var(--text-muted); font-size: 12px; }
+
+/* ── MODAL ── */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 100; backdrop-filter: blur(4px);
+}
+.modal-overlay.hidden { display: none; }
+.modal {
+  background: var(--surface); border: 1px solid var(--border-light);
+  border-radius: 12px; padding: 24px; width: 480px; max-width: 90vw;
+  max-height: 80vh; overflow-y: auto;
+}
+.modal h3 { font-size: 16px; margin-bottom: 16px; }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+/* ── GITHUB SETUP MODAL ── */
+.github-field { margin-bottom: 12px; }
+.github-field label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 4px; }
+.github-field input { width: 100%; padding: 8px 12px; background: var(--surface3); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-family: var(--font-mono); font-size: 13px; outline: none; }
+.github-field input:focus { border-color: var(--accent); }
+.github-field input[type="password"] { letter-spacing: 2px; }
+.github-note { font-size: 11px; color: var(--text-muted); margin-top: 8px; line-height: 1.6; }
+.github-note a { color: var(--accent); text-decoration: none; }
+
+/* ── EMPTY STATE ── */
+.empty-state { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+.empty-state .icon { font-size: 36px; margin-bottom: 12px; opacity: 0.5; }
+.empty-state p { font-size: 13px; }
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-light); }
+
+/* ── RESPONSIVE ── */
+@media (max-width: 700px) {
+  .left-panel { width: 220px; }
+  .task-panel, .calendar-panel { padding: 16px; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>StudyFlow</h1>
+    <span>学習タスク管理</span>
+    <span id="clock" style="margin-left:auto;font-size:11px;color:var(--text-muted)"></span>
+  </header>
+
+  <div class="main-area">
+    <!-- LEFT: タブ & ナビ -->
+    <div class="left-panel">
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="all" onclick="switchTab('all')">
+          <span class="tab-dot"></span> すべて
+          <span class="tab-count" id="count-all">0</span>
+        </button>
+        <div class="left-divider"></div>
+        <button class="tab-btn" data-tab="塾" onclick="switchTab('塾')">
+          <span class="tab-dot"></span> 塾
+          <span class="tab-count" id="count-塾">0</span>
+        </button>
+        <button class="tab-btn" data-tab="学校" onclick="switchTab('学校')">
+          <span class="tab-dot"></span> 学校
+          <span class="tab-count" id="count-学校">0</span>
+        </button>
+        <button class="tab-btn" data-tab="自学" onclick="switchTab('自学')">
+          <span class="tab-dot"></span> 自学
+          <span class="tab-count" id="count-自学">0</span>
+        </button>
+        <button class="tab-btn" data-tab="その他" onclick="switchTab('その他')">
+          <span class="tab-dot"></span> その他
+          <span class="tab-count" id="count-その他">0</span>
+        </button>
+      </div>
+      <div class="left-divider"></div>
+      <button class="cal-btn" id="cal-nav-btn" onclick="switchTab('calendar')">
+        📅 カレンダー
+      </button>
+      <div class="github-section">
+        <button class="github-btn" onclick="openGithubModal()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+          GitHub同期
+        </button>
+        <div class="sync-status" id="sync-status">未設定</div>
+      </div>
+    </div>
+
+    <!-- RIGHT: メインコンテンツ -->
+    <div class="right-panel" id="right-panel">
+      <!-- JS で描画 -->
+    </div>
+  </div>
+</div>
+
+<!-- GitHub設定モーダル -->
+<div class="modal-overlay hidden" id="github-modal">
+  <div class="modal">
+    <h3>🔗 GitHub同期設定</h3>
+    <div class="github-field">
+      <label>GitHubユーザー名</label>
+      <input type="text" id="gh-user" placeholder="your-username">
+    </div>
+    <div class="github-field">
+      <label>リポジトリ名</label>
+      <input type="text" id="gh-repo" placeholder="study-todo-data">
+    </div>
+    <div class="github-field">
+      <label>Personal Access Token (repo scope)</label>
+      <input type="password" id="gh-token" placeholder="ghp_xxxxxxxxxxxx">
+    </div>
+    <div class="github-field">
+      <label>保存ファイル名</label>
+      <input type="text" id="gh-file" placeholder="tasks.json" value="tasks.json">
+    </div>
+    <p class="github-note">
+      ⚠️ トークンはlocalStorageに保存されます（このデバイスのみ）。<br>
+      GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens<br>
+      で "Contents" の Read/Write 権限を付与してください。<br>
+      <a href="https://github.com/settings/tokens/new" target="_blank">トークン作成ページ →</a>
+    </p>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeGithubModal()">キャンセル</button>
+      <button class="btn-primary" onclick="saveGithubConfig()">保存 & テスト</button>
+    </div>
+  </div>
+</div>
+
+<!-- タスク編集モーダル -->
+<div class="modal-overlay hidden" id="edit-modal">
+  <div class="modal">
+    <h3 id="edit-modal-title">タスクを編集</h3>
+    <div id="edit-modal-body"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeEditModal()">キャンセル</button>
+      <button class="btn-primary" onclick="saveEdit()">保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════
+let state = {
+  tasks: [],   // { id, tab, type, title, detail, deadline, totalItems, progress, done, subtasks:[], expanded }
+  currentTab: 'all',
+  githubConfig: null,
+  lastSync: null,
+};
+let editTarget = null; // { taskId, parentId? }
+
+const TAB_COLORS = { 塾: '#f5a97f', 学校: '#89dceb', 自学: '#a6e3a1', その他: '#cba6f7', all: '#7c85f5' };
+const TASK_TYPES = ['汎用', '問題集', '教科書', '単語帳', '授業復習'];
+const TABS = ['塾', '学校', '自学', 'その他'];
+const DAY_NAMES = ['日','月','火','水','木','金','土'];
+
+// ═══════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════
+function init() {
+  loadFromLocal();
+  render();
+  setInterval(() => { updateClock(); updateDeadlineBadges(); }, 30000);
+  updateClock();
+}
+
+function loadFromLocal() {
+  try {
+    const d = localStorage.getItem('studyflow-data');
+    if (d) state.tasks = JSON.parse(d);
+    const g = localStorage.getItem('studyflow-github');
+    if (g) state.githubConfig = JSON.parse(g);
+    if (state.githubConfig) {
+      document.getElementById('sync-status').textContent = `@${state.githubConfig.user}`;
+      autoLoadFromGithub();
+    }
+  } catch(e) {}
+}
+
+function saveToLocal() {
+  localStorage.setItem('studyflow-data', JSON.stringify(state.tasks));
+}
+
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent =
+    now.toLocaleDateString('ja-JP') + ' ' + now.toLocaleTimeString('ja-JP', {hour:'2-digit', minute:'2-digit'});
+}
+
+// ═══════════════════════════════════════
+//  ID & UTILS
+// ═══════════════════════════════════════
+function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+
+function flattenTasks(tasks) {
+  const result = [];
+  function walk(arr, depth) {
+    arr.forEach(t => { result.push({...t, _depth: depth}); walk(t.subtasks||[], depth+1); });
+  }
+  walk(tasks, 0);
+  return result;
+}
+
+function findTask(id, arr) {
+  for (const t of arr) {
+    if (t.id === id) return t;
+    const found = findTask(id, t.subtasks || []);
+    if (found) return found;
+  }
+  return null;
+}
+
+function removeTask(id, arr) {
+  for (let i = 0; i < arr.length; i++) {
+    if (arr[i].id === id) { arr.splice(i, 1); return true; }
+    if (removeTask(id, arr[i].subtasks || [])) return true;
+  }
+  return false;
+}
+
+function deepClone(obj) { return JSON.parse(JSON.stringify(obj)); }
+
+function reIdTask(task) {
+  task.id = genId();
+  (task.subtasks || []).forEach(reIdTask);
+  return task;
+}
+
+// ═══════════════════════════════════════
+//  DEADLINE LOGIC
+// ═══════════════════════════════════════
+function deadlineStatus(task) {
+  // 自分のdeadlineとすべてのサブタスクの締め切り状況を集約
+  const allDeadlines = [];
+  function collect(t) {
+    if (t.deadline) allDeadlines.push(t.deadline);
+    (t.subtasks||[]).forEach(collect);
+  }
+  collect(task);
+  if (allDeadlines.length === 0) return null;
+
+  const now = Date.now();
+  let expiredCount = 0;
+  let nearest = null;
+  allDeadlines.forEach(dl => {
+    const dlMs = new Date(dl).getTime();
+    if (dlMs < now) { expiredCount++; }
+    else if (!nearest || dlMs < new Date(nearest).getTime()) { nearest = dl; }
+  });
+
+  return { expiredCount, nearest };
+}
+
+function formatDeadline(dlStr) {
+  const now = Date.now();
+  const dl = new Date(dlStr).getTime();
+  const diff = dl - now;
+  if (diff < 0) return { text: 'Expired', cls: 'expired' };
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return { text: `${mins}分後`, cls: 'urgent' };
+  const hours = Math.floor(diff / 3600000);
+  if (hours < 24) return { text: `${hours}時間後`, cls: hours < 6 ? 'urgent' : 'warn' };
+  const days = Math.floor(diff / 86400000);
+  return { text: `${days}日後`, cls: days <= 3 ? 'warn' : 'ok' };
+}
+
+function formatDeadlineBadge(task) {
+  const status = deadlineStatus(task);
+  if (!status) return '';
+  const parts = [];
+  if (status.expiredCount > 0) parts.push(`<span class="deadline-badge expired">Ex${status.expiredCount}</span>`);
+  if (status.nearest) {
+    const f = formatDeadline(status.nearest);
+    parts.push(`<span class="deadline-badge ${f.cls}">⏱ ${f.text}</span>`);
+  }
+  return parts.join(' ');
+}
+
+function updateDeadlineBadges() {
+  document.querySelectorAll('[data-deadline-badge]').forEach(el => {
+    const id = el.dataset.deadlineBadge;
+    const task = findTask(id, state.tasks);
+    if (task) el.innerHTML = formatDeadlineBadge(task);
+  });
+}
+
+// ═══════════════════════════════════════
+//  PROGRESS
+// ═══════════════════════════════════════
+function calcProgress(task) {
+  if (!task.totalItems || task.totalItems <= 1) return task.progress || 0;
+  return task.progress || 0;
+}
+
+// ═══════════════════════════════════════
+//  RENDER
+// ═══════════════════════════════════════
+function render() {
+  updateCounts();
+  const panel = document.getElementById('right-panel');
+  if (state.currentTab === 'calendar') { renderCalendar(panel); return; }
+
+  let tasks = state.tasks;
+  if (state.currentTab !== 'all') tasks = tasks.filter(t => t.tab === state.currentTab);
+
+  const tabLabel = state.currentTab === 'all' ? 'すべてのタスク' : state.currentTab;
+  const color = TAB_COLORS[state.currentTab] || '#7c85f5';
+
+  panel.innerHTML = `
+    <div class="task-panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <div class="panel-color-bar" style="background:${color}"></div>
+          ${tabLabel}
+        </div>
+        <button class="add-task-btn" onclick="showAddForm('root')">＋ タスク追加</button>
+      </div>
+      <div id="add-form-root"></div>
+      <div class="task-list" id="task-list">
+        ${tasks.length ? tasks.map(t => renderTask(t, 0)).join('') : `
+          <div class="empty-state">
+            <div class="icon">📚</div>
+            <p>タスクがありません。<br>「＋ タスク追加」で追加してください。</p>
+          </div>`}
+      </div>
+    </div>`;
+}
+
+function renderTask(task, depth) {
+  const pct = calcProgress(task);
+  const hasSubtasks = task.subtasks && task.subtasks.length > 0;
+  const colorKey = task.tab || 'その他';
+  const color = TAB_COLORS[colorKey] || '#7c85f5';
+  const subtaskCount = task.subtasks ? task.subtasks.length : 0;
+
+  const typeLabel = task.type || '汎用';
+  const detailTags = buildDetailTags(task);
+  const deadlineBadge = formatDeadlineBadge(task);
+
+  const indentStyle = depth > 0 ? `margin-left:${depth * 20}px;` : '';
+
+  return `
+  <div class="task-card ${hasExpired(task)?'expired-card':''}" id="card-${task.id}" style="${indentStyle}">
+    <div class="task-header">
+      <div class="task-check ${task.done?'checked':''}" onclick="toggleDone('${task.id}')"></div>
+      <div class="task-body">
+        <div class="task-title-row">
+          <span class="task-title ${task.done?'done':''}">${escHtml(task.title)}</span>
+        </div>
+        <div class="task-meta-tags">
+          <span class="tag type-${typeLabel}">${typeLabel}</span>
+          ${detailTags}
+          <span data-deadline-badge="${task.id}">${deadlineBadge}</span>
+        </div>
+      </div>
+      <div class="task-actions">
+        <button class="action-btn" title="編集" onclick="openEditModal('${task.id}')">✏️</button>
+        <button class="action-btn" title="複製" onclick="duplicateTask('${task.id}')">⧉</button>
+        <button class="action-btn danger" title="削除" onclick="deleteTask('${task.id}')">🗑</button>
+      </div>
+    </div>
+
+    ${task.totalItems > 1 ? `
+    <div class="task-progress">
+      <div class="progress-row">
+        <span class="progress-label">${pct}/${task.totalItems}</span>
+        <input type="range" class="progress-slider" min="0" max="${task.totalItems}"
+          value="${pct}" oninput="updateProgress('${task.id}', this.value)">
+        <span class="progress-pct" id="pct-${task.id}">${Math.round(pct/task.totalItems*100)}%</span>
+      </div>
+    </div>` : ''}
+
+    <div class="subtask-toggle">
+      <button class="subtask-toggle-btn ${task.expanded?'open':''}" onclick="toggleExpand('${task.id}')">
+        <span class="chevron">▶</span>
+        サブタスク (${subtaskCount})
+      </button>
+      <button class="add-task-btn" style="font-size:11px;padding:3px 10px;" onclick="showAddForm('${task.id}')">＋</button>
+    </div>
+
+    <div class="subtasks-container ${task.expanded?'':'hidden'}" id="subtasks-${task.id}">
+      <div id="add-form-${task.id}"></div>
+      ${task.subtasks && task.subtasks.length ? task.subtasks.map(s => renderTask(s, 0)).join('') : ''}
+    </div>
+  </div>`;
+}
+
+function buildDetailTags(task) {
+  const tags = [];
+  if (task.subject) tags.push(`<span class="tag">${escHtml(task.subject)}</span>`);
+  if (task.range) tags.push(`<span class="tag">📄 ${escHtml(task.range)}</span>`);
+  if (task.deadline) {
+    const d = new Date(task.deadline);
+    tags.push(`<span class="tag">🗓 ${d.getMonth()+1}/${d.getDate()} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}</span>`);
+  }
+  return tags.join('');
+}
+
+function hasExpired(task) {
+  const flat = [];
+  function collect(t) { if(t.deadline) flat.push(t.deadline); (t.subtasks||[]).forEach(collect); }
+  collect(task);
+  const now = Date.now();
+  return flat.some(dl => new Date(dl).getTime() < now);
+}
+
+// ═══════════════════════════════════════
+//  CALENDAR RENDER
+// ═══════════════════════════════════════
+function renderCalendar(panel) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const deadlines = [];
+
+  function collect(task, tab) {
+    if (task.deadline) deadlines.push({ task, tab });
+    (task.subtasks||[]).forEach(s => collect(s, tab));
+  }
+  state.tasks.forEach(t => collect(t, t.tab));
+
+  deadlines.sort((a,b) => new Date(a.task.deadline) - new Date(b.task.deadline));
+
+  // Group by date
+  const byDate = {};
+  deadlines.forEach(({task, tab}) => {
+    const d = new Date(task.deadline);
+    const key = d.toDateString();
+    if (!byDate[key]) byDate[key] = [];
+    byDate[key].push({task, tab, d});
+  });
+
+  // Show 30 days from today
+  let html = `
+  <div class="calendar-panel">
+    <div class="cal-header">
+      <div class="cal-title">📅 締め切りカレンダー</div>
+    </div>
+    <div id="cal-filter" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;">
+      ${['all','塾','学校','自学','その他'].map(t => `
+        <button class="cal-filter-tab ${t==='all'?'active':''}" onclick="calFilter('${t}', this)">${t==='all'?'すべて':t}</button>
+      `).join('')}
+    </div>
+    <div class="cal-timeline" id="cal-timeline">`;
+
+  for (let i = 0; i < 60; i++) {
+    const d = new Date(today);
+    d.setDate(d.getDate() + i);
+    const key = d.toDateString();
+    const events = byDate[key] || [];
+    const isToday = i === 0;
+    const dayNum = d.getDate();
+    const dayName = DAY_NAMES[d.getDay()];
+    const mon = d.getMonth()+1;
+
+    if (events.length === 0 && i > 0) continue; // skip empty days (except today)
+
+    html += `
+    <div class="cal-day" data-date="${key}">
+      <div class="cal-day-header">
+        <div class="cal-day-num ${isToday?'today':''}">${dayNum}</div>
+        <div class="cal-day-name ${isToday?'today':''}">${mon}/${dayName}</div>
+      </div>
+      <div class="cal-day-events">
+        ${events.length ? events.map(({task,tab,d}) => {
+          const expired = d.getTime() < Date.now();
+          const color = TAB_COLORS[tab] || '#7c85f5';
+          const hhmm = d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
+          return `<div class="cal-event ${expired?'expired':''}" data-tab="${tab}" style="border-left-color:${color}">
+            <span class="cal-event-time">${hhmm}</span>
+            <span class="cal-event-title">${escHtml(task.title)}</span>
+            <span class="cal-event-tab" style="background:${color}22;color:${color}">${tab}</span>
+          </div>`;
+        }).join('') : '<div class="cal-no-events">タスクなし</div>'}
+      </div>
+    </div>`;
+  }
+  html += `</div></div>`;
+  panel.innerHTML = html;
+}
+
+function calFilter(tab, btn) {
+  document.querySelectorAll('.cal-filter-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.cal-event').forEach(el => {
+    if (tab === 'all' || el.dataset.tab === tab) el.style.display = '';
+    else el.style.display = 'none';
+  });
+}
+
+// ═══════════════════════════════════════
+//  ADD TASK FORM
+// ═══════════════════════════════════════
+let activeFormTarget = null;
+
+function showAddForm(parentId) {
+  // Close any open form
+  if (activeFormTarget) {
+    const prev = document.getElementById(`add-form-${activeFormTarget}`);
+    if (prev) prev.innerHTML = '';
+  }
+  activeFormTarget = parentId;
+
+  // Determine tab for new task
+  let defaultTab = state.currentTab === 'all' ? '塾' : state.currentTab;
+  if (parentId !== 'root') {
+    const parent = findTask(parentId, state.tasks);
+    if (parent) defaultTab = parent.tab;
+  }
+
+  const containerId = `add-form-${parentId}`;
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
+  container.innerHTML = `
+  <div class="add-task-form">
+    <div class="form-row">
+      <input class="form-input" id="new-title" placeholder="タスク名" style="flex:2">
+      ${parentId === 'root' ? `
+      <select class="form-select" id="new-tab">
+        ${TABS.map(t => `<option value="${t}" ${t===defaultTab?'selected':''}>${t}</option>`).join('')}
+      </select>` : ''}
+      <select class="form-select" id="new-type" onchange="updateTypeFields()">
+        ${TASK_TYPES.map(t => `<option value="${t}">📌 ${t}</option>`).join('')}
+      </select>
+    </div>
+    <div id="type-fields" class="type-fields"></div>
+    <div class="form-row">
+      <label style="font-size:11px;color:var(--text-dim);align-self:center">締め切り</label>
+      <input class="form-input" type="datetime-local" id="new-deadline" style="flex:1">
+      <label style="font-size:11px;color:var(--text-dim);align-self:center">タスク数</label>
+      <select class="form-select" id="new-total">
+        <option value="1">なし</option>
+        ${[5,10,15,20,25,30,40,50,60,70,80,100,120,150,200].map(n => `<option value="${n}">${n}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-actions">
+      <button class="btn-cancel" onclick="cancelAddForm()">キャンセル</button>
+      <button class="btn-primary" onclick="addTask('${parentId}')">追加</button>
+    </div>
+  </div>`;
+  updateTypeFields();
+  document.getElementById('new-title').focus();
+}
+
+function updateTypeFields() {
+  const type = document.getElementById('new-type')?.value;
+  const container = document.getElementById('type-fields');
+  if (!container) return;
+  let html = '';
+  if (type === '問題集') {
+    html = `
+      <span class="type-field-label">教材名</span>
+      <input class="form-input" id="tf-subject" placeholder="例: チャート式数学" style="flex:1;min-width:140px">
+      <span class="type-field-label">問題番号</span>
+      <input class="form-input" id="tf-range" placeholder="例: p.45 No.12〜18" style="flex:1;min-width:140px">`;
+  } else if (type === '教科書') {
+    html = `
+      <span class="type-field-label">教材名</span>
+      <input class="form-input" id="tf-subject" placeholder="例: 日本史B" style="flex:1;min-width:140px">
+      <span class="type-field-label">ページ</span>
+      <input class="form-input" id="tf-range" placeholder="例: pp.120-135" style="flex:1;min-width:140px">`;
+  } else if (type === '単語帳') {
+    html = `
+      <span class="type-field-label">教材名</span>
+      <input class="form-input" id="tf-subject" placeholder="例: システム英単語" style="flex:1;min-width:140px">
+      <span class="type-field-label">見出し語番号</span>
+      <input class="form-input" id="tf-range" placeholder="例: #201〜#250" style="flex:1;min-width:140px">`;
+  } else if (type === '授業復習') {
+    html = `
+      <span class="type-field-label">科目</span>
+      <input class="form-input" id="tf-subject" placeholder="例: 英語" style="flex:1;min-width:140px">
+      <span class="type-field-label">内容</span>
+      <input class="form-input" id="tf-range" placeholder="例: 関係代名詞ノートまとめ" style="flex:1;min-width:200px">`;
+  }
+  container.innerHTML = html;
+}
+
+function cancelAddForm() {
+  if (activeFormTarget !== null) {
+    const container = document.getElementById(`add-form-${activeFormTarget}`);
+    if (container) container.innerHTML = '';
+    activeFormTarget = null;
+  }
+}
+
+function addTask(parentId) {
+  const titleEl = document.getElementById('new-title');
+  const title = titleEl ? titleEl.value.trim() : '';
+  if (!title) { titleEl && titleEl.focus(); return; }
+
+  const tabEl = document.getElementById('new-tab');
+  const tab = tabEl ? tabEl.value : (parentId !== 'root' ? (findTask(parentId, state.tasks)||{}).tab||'その他' : state.currentTab === 'all' ? '塾' : state.currentTab);
+  const type = document.getElementById('new-type')?.value || '汎用';
+  const deadline = document.getElementById('new-deadline')?.value || '';
+  const totalItems = parseInt(document.getElementById('new-total')?.value || '1');
+  const subject = document.getElementById('tf-subject')?.value.trim() || '';
+  const range = document.getElementById('tf-range')?.value.trim() || '';
+
+  const task = {
+    id: genId(), tab, type, title,
+    subject, range, deadline: deadline || null,
+    totalItems, progress: 0, done: false,
+    subtasks: [], expanded: false
+  };
+
+  if (parentId === 'root') {
+    state.tasks.push(task);
+  } else {
+    const parent = findTask(parentId, state.tasks);
+    if (parent) { parent.subtasks = parent.subtasks || []; parent.subtasks.push(task); }
+  }
+
+  saveToLocal();
+  autoSaveToGithub();
+  activeFormTarget = null;
+  render();
+}
+
+// ═══════════════════════════════════════
+//  TASK ACTIONS
+// ═══════════════════════════════════════
+function toggleDone(id) {
+  const task = findTask(id, state.tasks);
+  if (task) { task.done = !task.done; saveToLocal(); autoSaveToGithub(); render(); }
+}
+
+function toggleExpand(id) {
+  const task = findTask(id, state.tasks);
+  if (task) {
+    task.expanded = !task.expanded;
+    saveToLocal();
+    const container = document.getElementById(`subtasks-${id}`);
+    const btn = document.querySelector(`#card-${id} .subtask-toggle-btn`);
+    if (container) container.classList.toggle('hidden', !task.expanded);
+    if (btn) btn.classList.toggle('open', task.expanded);
+  }
+}
+
+function updateProgress(id, value) {
+  const task = findTask(id, state.tasks);
+  if (task) {
+    task.progress = parseInt(value);
+    const pctEl = document.getElementById(`pct-${id}`);
+    if (pctEl) pctEl.textContent = Math.round(task.progress / task.totalItems * 100) + '%';
+    saveToLocal(); autoSaveToGithub();
+  }
+}
+
+function deleteTask(id) {
+  if (!confirm('このタスクを削除しますか？')) return;
+  removeTask(id, state.tasks);
+  saveToLocal(); autoSaveToGithub(); render();
+}
+
+function duplicateTask(id) {
+  const task = findTask(id, state.tasks);
+  if (!task) return;
+  const clone = reIdTask(deepClone(task));
+  clone.title = clone.title + '（コピー）';
+  // Find parent and insert after
+  function insertAfter(arr) {
+    for (let i = 0; i < arr.length; i++) {
+      if (arr[i].id === id) { arr.splice(i+1, 0, clone); return true; }
+      if (insertAfter(arr[i].subtasks || [])) return true;
+    }
+    return false;
+  }
+  insertAfter(state.tasks);
+  saveToLocal(); autoSaveToGithub(); render();
+}
+
+// ═══════════════════════════════════════
+//  EDIT MODAL
+// ═══════════════════════════════════════
+function openEditModal(id) {
+  editTarget = id;
+  const task = findTask(id, state.tasks);
+  if (!task) return;
+
+  const modal = document.getElementById('edit-modal');
+  const body = document.getElementById('edit-modal-body');
+  document.getElementById('edit-modal-title').textContent = '✏️ タスクを編集';
+
+  const dlVal = task.deadline ? task.deadline.slice(0,16) : '';
+
+  body.innerHTML = `
+    <div class="form-row">
+      <input class="form-input" id="edit-title" value="${escHtml(task.title)}" style="flex:2">
+      <select class="form-select" id="edit-tab">
+        ${TABS.map(t => `<option value="${t}" ${t===task.tab?'selected':''}>${t}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-row">
+      <select class="form-select" id="edit-type" onchange="updateEditTypeFields()">
+        ${TASK_TYPES.map(t => `<option value="${t}" ${t===task.type?'selected':''}>📌 ${t}</option>`).join('')}
+      </select>
+    </div>
+    <div id="edit-type-fields" class="type-fields" style="margin-bottom:10px"></div>
+    <div class="form-row">
+      <label style="font-size:11px;color:var(--text-dim);align-self:center">締め切り</label>
+      <input class="form-input" type="datetime-local" id="edit-deadline" value="${dlVal}" style="flex:1">
+    </div>
+    <div class="form-row">
+      <label style="font-size:11px;color:var(--text-dim);align-self:center">タスク数</label>
+      <select class="form-select" id="edit-total">
+        <option value="1" ${task.totalItems===1?'selected':''}>なし</option>
+        ${[5,10,15,20,25,30,40,50,60,70,80,100,120,150,200].map(n => `<option value="${n}" ${task.totalItems===n?'selected':''}>${n}</option>`).join('')}
+      </select>
+    </div>`;
+
+  // pre-fill type fields
+  modal.classList.remove('hidden');
+  updateEditTypeFields(task);
+}
+
+function updateEditTypeFields(prefill) {
+  const type = document.getElementById('edit-type')?.value;
+  const container = document.getElementById('edit-type-fields');
+  if (!container) return;
+  const s = prefill ? prefill.subject||'' : '';
+  const r = prefill ? prefill.range||'' : '';
+  let html = '';
+  if (type === '問題集') {
+    html = `<span class="type-field-label">教材名</span><input class="form-input" id="etf-subject" value="${escHtml(s)}" placeholder="例: チャート式" style="flex:1;min-width:120px">
+    <span class="type-field-label">問題番号</span><input class="form-input" id="etf-range" value="${escHtml(r)}" placeholder="p.45 No.12" style="flex:1;min-width:120px">`;
+  } else if (type === '教科書') {
+    html = `<span class="type-field-label">教材名</span><input class="form-input" id="etf-subject" value="${escHtml(s)}" style="flex:1;min-width:120px">
+    <span class="type-field-label">ページ</span><input class="form-input" id="etf-range" value="${escHtml(r)}" style="flex:1;min-width:120px">`;
+  } else if (type === '単語帳') {
+    html = `<span class="type-field-label">教材名</span><input class="form-input" id="etf-subject" value="${escHtml(s)}" style="flex:1;min-width:120px">
+    <span class="type-field-label">見出し語番号</span><input class="form-input" id="etf-range" value="${escHtml(r)}" style="flex:1;min-width:120px">`;
+  } else if (type === '授業復習') {
+    html = `<span class="type-field-label">科目</span><input class="form-input" id="etf-subject" value="${escHtml(s)}" style="flex:1;min-width:120px">
+    <span class="type-field-label">内容</span><input class="form-input" id="etf-range" value="${escHtml(r)}" style="flex:1;min-width:160px">`;
+  }
+  container.innerHTML = html;
+}
+
+function saveEdit() {
+  const task = findTask(editTarget, state.tasks);
+  if (!task) return;
+  task.title = document.getElementById('edit-title').value.trim() || task.title;
+  task.tab = document.getElementById('edit-tab').value;
+  task.type = document.getElementById('edit-type').value;
+  const dl = document.getElementById('edit-deadline').value;
+  task.deadline = dl || null;
+  task.totalItems = parseInt(document.getElementById('edit-total').value || '1');
+  task.subject = document.getElementById('etf-subject')?.value.trim() || '';
+  task.range = document.getElementById('etf-range')?.value.trim() || '';
+  saveToLocal(); autoSaveToGithub();
+  closeEditModal(); render();
+}
+
+function closeEditModal() {
+  document.getElementById('edit-modal').classList.add('hidden');
+  editTarget = null;
+}
+
+// ═══════════════════════════════════════
+//  TAB SWITCHING
+// ═══════════════════════════════════════
+function switchTab(tab) {
+  state.currentTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.getElementById('cal-nav-btn').classList.toggle('active', tab === 'calendar');
+  render();
+}
+
+function updateCounts() {
+  const countAll = state.tasks.length;
+  document.getElementById('count-all').textContent = countAll;
+  TABS.forEach(tab => {
+    const el = document.getElementById(`count-${tab}`);
+    if (el) el.textContent = state.tasks.filter(t => t.tab === tab).length;
+  });
+}
+
+// ═══════════════════════════════════════
+//  GITHUB SYNC
+// ═══════════════════════════════════════
+function openGithubModal() {
+  const modal = document.getElementById('github-modal');
+  modal.classList.remove('hidden');
+  if (state.githubConfig) {
+    document.getElementById('gh-user').value = state.githubConfig.user || '';
+    document.getElementById('gh-repo').value = state.githubConfig.repo || '';
+    document.getElementById('gh-token').value = state.githubConfig.token || '';
+    document.getElementById('gh-file').value = state.githubConfig.file || 'tasks.json';
+  }
+}
+
+function closeGithubModal() {
+  document.getElementById('github-modal').classList.add('hidden');
+}
+
+async function saveGithubConfig() {
+  const config = {
+    user: document.getElementById('gh-user').value.trim(),
+    repo: document.getElementById('gh-repo').value.trim(),
+    token: document.getElementById('gh-token').value.trim(),
+    file: document.getElementById('gh-file').value.trim() || 'tasks.json',
+  };
+  if (!config.user || !config.repo || !config.token) {
+    alert('すべてのフィールドを入力してください。');
+    return;
+  }
+  state.githubConfig = config;
+  localStorage.setItem('studyflow-github', JSON.stringify(config));
+
+  // Test connection
+  try {
+    await githubSave(config, state.tasks);
+    document.getElementById('sync-status').textContent = `✓ @${config.user}`;
+    alert('✅ GitHub同期の設定が完了しました！');
+    closeGithubModal();
+  } catch(e) {
+    alert('❌ 接続失敗: ' + e.message);
+  }
+}
+
+async function githubSave(config, tasks) {
+  const content = btoa(unescape(encodeURIComponent(JSON.stringify(tasks, null, 2))));
+  // Get current SHA
+  let sha = null;
+  try {
+    const res = await fetch(`https://api.github.com/repos/${config.user}/${config.repo}/contents/${config.file}`, {
+      headers: { Authorization: `token ${config.token}`, Accept: 'application/vnd.github.v3+json' }
+    });
+    if (res.ok) { const d = await res.json(); sha = d.sha; }
+  } catch(e) {}
+
+  const body = { message: `StudyFlow sync ${new Date().toISOString()}`, content };
+  if (sha) body.sha = sha;
+
+  const putRes = await fetch(`https://api.github.com/repos/${config.user}/${config.repo}/contents/${config.file}`, {
+    method: 'PUT',
+    headers: { Authorization: `token ${config.token}`, Accept: 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (!putRes.ok) {
+    const err = await putRes.json();
+    throw new Error(err.message || 'GitHub API error');
+  }
+  state.lastSync = new Date().toLocaleTimeString('ja-JP', {hour:'2-digit', minute:'2-digit'});
+  document.getElementById('sync-status').textContent = `✓ ${state.lastSync}`;
+}
+
+async function autoLoadFromGithub() {
+  if (!state.githubConfig) return;
+  const c = state.githubConfig;
+  try {
+    const res = await fetch(`https://api.github.com/repos/${c.user}/${c.repo}/contents/${c.file}`, {
+      headers: { Authorization: `token ${c.token}`, Accept: 'application/vnd.github.v3+json' }
+    });
+    if (!res.ok) return;
+    const d = await res.json();
+    const decoded = decodeURIComponent(escape(atob(d.content.replace(/\n/g,''))));
+    state.tasks = JSON.parse(decoded);
+    saveToLocal();
+    render();
+    document.getElementById('sync-status').textContent = `↓ ロード完了`;
+  } catch(e) {
+    document.getElementById('sync-status').textContent = `⚠ ロード失敗`;
+  }
+}
+
+let saveTimer = null;
+function autoSaveToGithub() {
+  if (!state.githubConfig) return;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    try {
+      await githubSave(state.githubConfig, state.tasks);
+    } catch(e) {
+      document.getElementById('sync-status').textContent = `⚠ 保存失敗`;
+    }
+  }, 2000);
+}
+
+// ═══════════════════════════════════════
+//  HELPERS
+// ═══════════════════════════════════════
+function escHtml(s) {
+  return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ═══════════════════════════════════════
+//  START
+// ═══════════════════════════════════════
+init();
+</script>
+</body>
+</html>
