@@ -99,6 +99,30 @@ h1{font-family:var(--fd);font-size:22px;color:var(--ac);}
 .act:hover,.act:active{background:var(--sf3);color:var(--tx);}
 .act.del:hover,.act.del:active{color:var(--exp);}
 .pc-strip{display:flex;align-items:center;gap:6px;padding:0 12px 9px;border-bottom:1px solid var(--bd);}
+/* ── BOTTOM SHEET ── */
+.bs-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;opacity:0;pointer-events:none;transition:opacity .25s;backdrop-filter:blur(3px);}
+.bs-overlay.show{opacity:1;pointer-events:all;}
+.bs{position:fixed;left:0;right:0;bottom:0;height:75vh;background:var(--sf);border-radius:16px 16px 0 0;z-index:201;transform:translateY(100%);transition:transform .3s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;overflow:hidden;}
+.bs.show{transform:translateY(0);}
+.bs-handle{width:36px;height:4px;background:var(--bd2);border-radius:2px;margin:10px auto 6px;flex-shrink:0;}
+.bs-header{display:flex;align-items:center;gap:8px;padding:6px 14px 10px;border-bottom:1px solid var(--bd);flex-shrink:0;}
+.bs-back{background:none;border:none;color:var(--td);font-size:18px;cursor:pointer;padding:4px 6px;border-radius:6px;flex-shrink:0;}
+.bs-back:active{background:var(--sf2);}
+.bs-title{flex:1;font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.bs-close{background:none;border:none;color:var(--td);font-size:20px;cursor:pointer;padding:4px 8px;border-radius:6px;flex-shrink:0;line-height:1;}
+.bs-close:active{background:var(--sf2);}
+.bs-add{display:flex;align-items:center;gap:5px;background:none;border:1px dashed var(--bd2);color:var(--td);font-size:12px;padding:5px 12px;border-radius:var(--rs);cursor:pointer;flex-shrink:0;}
+.bs-add:active{border-color:var(--ac);color:var(--ac);}
+.bs-body{flex:1;overflow-y:auto;padding:8px 12px 24px;-webkit-overflow-scrolling:touch;}
+/* card in bottom sheet */
+.bs .sc{background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);margin-bottom:8px;overflow:hidden;cursor:pointer;}
+.bs .sc:active{border-color:var(--bd2);}
+.bs .sc.xp-c{border-color:rgba(243,139,168,.35);}
+.bs .sc.done-c{opacity:.5;}
+.bs-ex-btn{background:none;border:none;color:var(--exp);font-size:13px;cursor:pointer;padding:2px 5px;flex-shrink:0;}
+/* pc-card tap area */
+.pc-tap{cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.pc-tap:active .pc{border-color:var(--bd2);}
 .repeat-section{background:var(--sf3);border-radius:var(--rs);padding:10px 12px;margin-bottom:8px;}
 .repeat-section-hd{font-size:12px;color:var(--td);margin-bottom:8px;display:flex;align-items:center;gap:6px;}
 .repeat-days{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px;}
@@ -429,6 +453,31 @@ input[type=checkbox]{accent-color:var(--ac);}
       <button class="bok" id="lesson-modal-save" onclick="saveLessonSetup()">生成</button>
     </div>
   </div>
+</div>
+
+<!-- Bottom Sheet Overlay -->
+<div class="bs-overlay" id="bs-overlay" onclick="closeBSTop()"></div>
+<!-- Bottom Sheet Stack (up to 2 layers) -->
+<div class="bs" id="bs1">
+  <div class="bs-handle"></div>
+  <div class="bs-header" id="bs1-header">
+    <div class="bs-title" id="bs1-title"></div>
+    <button class="bs-ex-btn" id="bs1-ex" style="display:none" onclick="bsJumpExpired(0,event)">❗</button>
+    <button class="bs-add" id="bs1-add" onclick="bsAddTask(0)">＋ タスク追加</button>
+    <button class="bs-close" onclick="closeBSAll()">×</button>
+  </div>
+  <div class="bs-body" id="bs1-body"></div>
+</div>
+<div class="bs" id="bs2">
+  <div class="bs-handle"></div>
+  <div class="bs-header" id="bs2-header">
+    <button class="bs-back" onclick="closeBS2()">‹</button>
+    <div class="bs-title" id="bs2-title"></div>
+    <button class="bs-ex-btn" id="bs2-ex" style="display:none" onclick="bsJumpExpired(1,event)">❗</button>
+    <button class="bs-add" id="bs2-add" onclick="bsAddTask(1)">＋</button>
+    <button class="bs-close" onclick="closeBSAll()">×</button>
+  </div>
+  <div class="bs-body" id="bs2-body"></div>
 </div>
 
 <!-- Edit modal -->
@@ -1172,9 +1221,9 @@ function closeNav(){
   document.getElementById('hbg').classList.remove('open');
 }
 function sw(tab){
-  // close all expanded parents before switching tab
   P.forEach(p=>{p.expanded=false;});
   curTab=tab;
+  closeBSAll();
   document.querySelectorAll('.nt').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
   closeNav();render();
 }
@@ -1626,73 +1675,205 @@ function renderP(p){
       </div>
     </div>
     ${pb||sumBadges(p)?`<div class="pc-summ">${pb}${sumBadges(p)}</div>`:''}
-    <div class="pc-strip">
-      <button class="tog${p.expanded?' open':''}" id="tog-${p.id}" onclick="togP('${p.id}')">
-        <span class="chev">▶</span> タスク (${(p.subtasks||[]).length})
-      </button>
-      ${(dlSum(p)||{}).ex>0?`<button class="ex-jump-btn" title="期限切れタスクへ" onclick="jumpToExpired('${p.id}',event)">❗</button>`:''}
-      <button class="add-s-btn" onclick="showSF('${p.id}','${p.id}')">＋ タスク追加</button>
-    </div>
-    <div class="sub-area${p.expanded?'':' hidden'}" id="sa-${p.id}">
-      <div id="sf-${p.id}"></div>
-      <div id="sc-${p.id}">
-        ${(p.subtasks||[]).map(s=>renderS(s,p.id)).join('')}
-      </div>
+    <div class="pc-strip" onclick="openBS('${p.id}',event)" style="cursor:pointer">
+      <span style="font-size:11px;color:var(--td);font-family:var(--fm)">▶ タスク (${(p.subtasks||[]).length})</span>
+      ${(dlSum(p)||{}).ex>0?`<span style="color:var(--exp);font-size:13px">❗</span>`:''}
+      <button class="add-s-btn" onclick="showSF('${p.id}','${p.id}');event.stopPropagation()">＋ タスク追加</button>
     </div>
   </div>`;
 }
 
-function renderS(s,rootId,indent=0){
+function renderS(s,rootId){
   const dlB=s.deadline?(()=>{const f=fmtDL(s.deadline);return`<span class="badge ${f.cls}">⏱ ${f.text}</span>`;})():'';
   const hasNested=s.subtasks&&s.subtasks.length>0;
-  const ml=indent>0?`style="margin-left:${indent*14}px"`:'';
+  const hasEx=(dlSum(s)||{}).ex>0;
+  const isXp=s.deadline&&new Date(s.deadline)<Date.now()&&!s.done;
   return`
-  <div ${ml}>
-    <div class="sc${s.done?' done-c':''}${(s.deadline&&new Date(s.deadline)<Date.now())?' xp-c':''}" id="card-${s.id}">
-      <div class="sc-head">
-        <div class="chk${s.done?' on':''}" onclick="togDone('${s.id}','${rootId}')"></div>
-        <div class="sc-body">
-          ${s.subject?`<div style="font-size:11px;color:var(--td);margin-bottom:2px">📖 ${esc(s.subject)}</div>`:''}
-          ${s.title?`<div class="sc-title${s.done?' done':''}">${esc(s.title)}</div>`:''}
-          ${!s.title&&Object.values(s.fields||{}).some(Boolean)?`<div class="sc-field-main${s.done?' done':''}">${Object.entries(s.fields||{}).filter(([k,v])=>v).map(([k,v])=>`<span>${(FIELD_PREFIX[k]||'')+esc(v)}</span>`).join('<span class="sc-field-sep"> · </span>')}</div>`:''}
-          <div class="sc-tags">
-            ${s.title?renderFieldTags(s):''}
-            ${s.deadline?`<span class="tag">🗓 ${fmtDate(s.deadline)}</span>`:''}
-            ${dlB}
-            ${hasNested?sumBadges(s,`sa-${rootId}`):''}
-          </div>
-        </div>
-        <div class="sc-acts">
-          <button class="act" style="font-size:11px" onclick="openEM('s','${s.id}','${rootId}')">✏️</button>
-          <button class="act" style="font-size:11px" onclick="dupS('${s.id}','${rootId}')">⧉</button>
-          <button class="act del" style="font-size:11px" onclick="delS('${s.id}','${rootId}')">🗑</button>
+  <div class="sc${s.done?' done-c':''}${isXp?' xp-c':''}" id="card-${s.id}">
+    <div class="sc-head">
+      <div class="chk${s.done?' on':''}" onclick="togDone('${s.id}','${rootId}');event.stopPropagation()"></div>
+      <div class="sc-body" onclick="${hasNested?`openBS2('${s.id}','${rootId}',event)`:''}" style="${hasNested?'cursor:pointer':''}">
+        ${s.subject?`<div style="font-size:11px;color:var(--td);margin-bottom:2px">📖 ${esc(s.subject)}</div>`:''}
+        ${s.title?`<div class="sc-title${s.done?' done':''}">${esc(s.title)}</div>`:''}
+        ${!s.title&&Object.values(s.fields||{}).some(Boolean)?`<div class="sc-field-main${s.done?' done':''}">${Object.entries(s.fields||{}).filter(([k,v])=>v).map(([k,v])=>`<span>${(FIELD_PREFIX[k]||'')+esc(v)}</span>`).join('<span class="sc-field-sep"> · </span>')}</div>`:''}
+        <div class="sc-tags">
+          ${s.title?renderFieldTags(s):''}
+          ${s.deadline?`<span class="tag">🗓 ${fmtDate(s.deadline)}</span>`:''}
+          ${dlB}
         </div>
       </div>
-      ${s.totalItems>1?`
-      <div class="sc-prog">
-        <span class="pl" id="pf-${s.id}">${s.progress||0}/${s.totalItems}</span>
-        <div class="slider-wrap">
-          <input type="range" class="pslider" min="0" max="${s.totalItems}" value="${s.progress||0}"
-            step="1" id="sl-${s.id}"
-            oninput="updProg('${s.id}','${rootId}',this.value)"
-            style="--ticks:${s.totalItems}">
-          <div class="slider-ticks">${Array.from({length:s.totalItems+1},(_,i)=>`<span></span>`).join('')}</div>
-        </div>
-        <span class="ppct" id="pp-${s.id}">${Math.round((s.progress||0)/s.totalItems*100)}%</span>
-      </div>`:''}
-      <div class="sc-foot">
-        <button class="tog${s.expanded?' open':''}" id="tog-${s.id}" onclick="togS('${s.id}','${rootId}')">
-          <span class="chev">▶</span> サブ (${(s.subtasks||[]).length})
-        </button>
-        ${(dlSum(s)||{}).ex>0?`<button class="ex-jump-btn" title="期限切れタスクへ" onclick="jumpToNestedExpired('${s.id}','${rootId}',event)">❗</button>`:''}
-        <button class="add-s-btn" onclick="showSF('${rootId}','${s.id}')">＋</button>
+      <div class="sc-acts">
+        <button class="act" style="font-size:11px" onclick="openEM('s','${s.id}','${rootId}');event.stopPropagation()">✏️</button>
+        <button class="act" style="font-size:11px" onclick="dupS('${s.id}','${rootId}');event.stopPropagation()">⧉</button>
+        <button class="act del" style="font-size:11px" onclick="delS('${s.id}','${rootId}');event.stopPropagation()">🗑</button>
       </div>
     </div>
+    ${s.totalItems>1?`
+    <div class="sc-prog">
+      <span class="pl" id="pf-${s.id}">${s.progress||0}/${s.totalItems}</span>
+      <div class="slider-wrap">
+        <input type="range" class="pslider" min="0" max="${s.totalItems}" value="${s.progress||0}"
+          step="1" id="sl-${s.id}"
+          oninput="updProg('${s.id}','${rootId}',this.value)"
+          style="--ticks:${s.totalItems}">
+        <div class="slider-ticks">${Array.from({length:s.totalItems+1},(_,i)=>`<span></span>`).join('')}</div>
+      </div>
+      <span class="ppct" id="pp-${s.id}">${Math.round((s.progress||0)/s.totalItems*100)}%</span>
+    </div>`:''}
+    ${hasNested?`
+    <div class="sc-foot" onclick="openBS2('${s.id}','${rootId}',event)" style="cursor:pointer">
+      <span style="font-size:11px;color:var(--td);font-family:var(--fm)">▶ サブ (${s.subtasks.length})</span>
+      ${hasEx?`<span style="color:var(--exp);font-size:13px;margin-left:4px">❗</span>`:''}
+    </div>
+    `:''}
     <div id="sf-${s.id}"></div>
-    <div class="nested${s.expanded?'':' hidden'}" id="sa-${s.id}">
-      ${(s.subtasks||[]).map(c=>renderS(c,rootId,indent+1)).join('')}
-    </div>
   </div>`;
+}
+
+// ════════════════════════════════
+//  BOTTOM SHEET
+// ════════════════════════════════
+// bsStack: [{parentId, subtaskId(for bs2)}]
+let bsStack=[];
+
+function openBS(parentId, event){
+  event?.stopPropagation();
+  const p=P.find(x=>x.id===parentId);if(!p)return;
+  closeForm();
+  bsStack=[{parentId,subtaskId:null}];
+  renderBS1(p);
+  document.getElementById('bs-overlay').classList.add('show');
+  requestAnimationFrame(()=>{
+    document.getElementById('bs1').classList.add('show');
+    document.getElementById('bs2').classList.remove('show');
+  });
+}
+
+function openBS2(subtaskId, rootId, event){
+  event?.stopPropagation();
+  const r=P.find(x=>x.id===rootId);if(!r)return;
+  const s=find(subtaskId,r.subtasks||[]);if(!s)return;
+  bsStack.push({parentId:rootId,subtaskId});
+  renderBS2(s,rootId);
+  requestAnimationFrame(()=>{
+    document.getElementById('bs2').classList.add('show');
+  });
+}
+
+function renderBS1(p){
+  document.getElementById('bs1-title').textContent=p.title;
+  const hasEx=(dlSum(p)||{}).ex>0;
+  const exBtn=document.getElementById('bs1-ex');
+  exBtn.style.display=hasEx?'':'none';
+  // render subtasks
+  const body=document.getElementById('bs1-body');
+  body.innerHTML='<div id="sf-bs1"></div>'+
+    (p.subtasks||[]).map(s=>renderS(s,p.id)).join('');
+  // scroll to nearest
+  setTimeout(()=>scrollBSToNearest(body,p.subtasks||[]),100);
+}
+
+function renderBS2(s, rootId){
+  document.getElementById('bs2-title').textContent=s.title||(Object.values(s.fields||{}).filter(Boolean).join(' '))||'サブタスク';
+  const hasEx=(dlSum(s)||{}).ex>0;
+  const exBtn=document.getElementById('bs2-ex');
+  exBtn.style.display=hasEx?'':'none';
+  const body=document.getElementById('bs2-body');
+  body.innerHTML='<div id="sf-bs2"></div>'+
+    (s.subtasks||[]).map(c=>renderS(c,rootId)).join('');
+  setTimeout(()=>scrollBSToNearest(body,s.subtasks||[]),100);
+}
+
+function scrollBSToNearest(container,subtasks){
+  if(!container||!subtasks.length)return;
+  const now=Date.now();
+  // find first undone not-expired
+  let target=null;
+  for(const s of subtasks){
+    if(!s.done&&s.deadline&&new Date(s.deadline).getTime()>=now){target=s;break;}
+  }
+  // fallback: first undone expired
+  if(!target) for(const s of subtasks){if(!s.done){target=s;break;}}
+  // fallback: scroll to bottom if all done
+  if(!target){container.scrollTop=container.scrollHeight;return;}
+  const card=document.getElementById(`card-${target.id}`);
+  if(!card)return;
+  const cr=container.getBoundingClientRect();
+  const er=card.getBoundingClientRect();
+  container.scrollTop=Math.max(0,container.scrollTop+(er.top-cr.top)-8);
+}
+
+function closeBS2(){
+  document.getElementById('bs2').classList.remove('show');
+  bsStack.pop();
+}
+
+function closeBSAll(){
+  const b1=document.getElementById('bs1');
+  const b2=document.getElementById('bs2');
+  const ov=document.getElementById('bs-overlay');
+  if(b1)b1.classList.remove('show');
+  if(b2)b2.classList.remove('show');
+  if(ov)ov.classList.remove('show');
+  bsStack=[];
+  closeForm();
+}
+
+function closeBSTop(){
+  if(bsStack.length>1){closeBS2();}
+  else{closeBSAll();}
+}
+
+function bsAddTask(layer){
+  // layer 0=bs1(subtasks of parent), 1=bs2(sub-subtasks)
+  const frame=bsStack[layer];if(!frame)return;
+  const rootId=frame.parentId;
+  const parentId=layer===0?rootId:(frame.subtaskId||rootId);
+  const formContainerId=layer===0?'sf-bs1':'sf-bs2';
+  closeForm();
+  formTarget={type:'sub',cid:formContainerId,rootId,parentId,prevDL:null};
+  // find prevDL
+  const r=P.find(x=>x.id===rootId);
+  if(r){
+    const sibs=parentId===rootId?(r.subtasks||[]):((find(parentId,r.subtasks||[])||{}).subtasks||[]);
+    for(let i=sibs.length-1;i>=0;i--){if(sibs[i].deadline){formTarget.prevDL=sibs[i].deadline;break;}}
+  }
+  const container=document.getElementById(formContainerId);if(!container)return;
+  container.innerHTML=buildSubForm(rootId,parentId,formTarget.prevDL);
+  document.getElementById('sf-ti')?.focus();
+}
+
+function bsJumpExpired(layer, event){
+  event?.stopPropagation();
+  const frame=bsStack[layer];if(!frame)return;
+  const bodyId=layer===0?'bs1-body':'bs2-body';
+  const body=document.getElementById(bodyId);if(!body)return;
+  const r=P.find(x=>x.id===frame.parentId);if(!r)return;
+  const subs=layer===0?(r.subtasks||[]):((find(frame.subtaskId,r.subtasks||[])||{}).subtasks||[]);
+  const now=Date.now();
+  let oldest=null,oldestT=Infinity;
+  function walk(arr){arr.forEach(s=>{
+    if(s.deadline&&!s.done){const t=new Date(s.deadline).getTime();if(t<now&&t<oldestT){oldestT=t;oldest=s;}}
+    walk(s.subtasks||[]);
+  });}
+  walk(subs);
+  if(!oldest)return;
+  const card=document.getElementById(`card-${oldest.id}`);if(!card)return;
+  const cr=body.getBoundingClientRect();
+  const er=card.getBoundingClientRect();
+  body.scrollTo({top:Math.max(0,body.scrollTop+(er.top-cr.top)-8),behavior:'smooth'});
+}
+
+function refreshActiveBS(){
+  if(bsStack.length===0)return;
+  const frame=bsStack[bsStack.length-1];
+  const r=P.find(x=>x.id===frame.parentId);if(!r)return;
+  if(frame.subtaskId){
+    const s=find(frame.subtaskId,r.subtasks||[]);
+    if(s)renderBS2(s,frame.parentId);
+  } else {
+    renderBS1(r);
+  }
 }
 
 function updateCounts(){
@@ -1877,6 +2058,8 @@ function togDone(id,rootId){
   const r=P.find(x=>x.id===rootId);if(!r)return;
   const s=find(id,r.subtasks||[]);if(!s)return;
   s.done=!s.done;saveL();
+  // refresh parent card badge and BS
+  setTimeout(()=>{updateDeadlineBadgesOnly();refreshActiveBS();},80);
   const chk=document.querySelector(`#card-${id} .chk`);
   const ttl=document.querySelector(`#card-${id} .sc-title`);
   const fld=document.querySelector(`#card-${id} .sc-field-main`);
@@ -1908,6 +2091,7 @@ function updProg(id,rootId,val){
     if(chk)chk.classList.add('on');
     if(ttl)ttl.classList.add('done');
     if(card)card.classList.add('done-c');
+    setTimeout(()=>{updateDeadlineBadgesOnly();refreshActiveBS();},80);
   } else if(s.progress<s.totalItems&&s.done){
     // uncheck if slider pulled back below 100%
     s.done=false;
@@ -2202,6 +2386,7 @@ function addS(){
   if(parentId===rootId){r.subtasks.push(sub);}
   else{const pn=find(parentId,r.subtasks||[]);if(pn){pn.subtasks=pn.subtasks||[];pn.subtasks.push(sub);}}
   saveL();closeForm();render();
+  setTimeout(refreshActiveBS,60);
 }
 
 function dlMode(mode,btn){
@@ -2266,7 +2451,7 @@ function dupP(id){
 }
 function delS(id,rootId){
   if(!confirm('このタスクを削除しますか？'))return;
-  const r=P.find(x=>x.id===rootId);if(r){remove(id,r.subtasks||[]);saveL();render();}
+  const r=P.find(x=>x.id===rootId);if(r){remove(id,r.subtasks||[]);saveL();render();setTimeout(refreshActiveBS,60);}
 }
 function dupS(id,rootId){
   const r=P.find(x=>x.id===rootId);if(!r)return;
@@ -2274,6 +2459,7 @@ function dupS(id,rootId){
   const c=reId(cln(node));c.title+='（コピー）';
   function ins(arr){for(let i=0;i<arr.length;i++){if(arr[i].id===id){arr.splice(i+1,0,c);return true;}if(ins(arr[i].subtasks||[]))return true;}return false;}
   ins(r.subtasks||[]);saveL();render();
+  setTimeout(refreshActiveBS,60);
 }
 
 // ════════════════════════════════
@@ -2333,6 +2519,7 @@ function commitEM(){
     }
   }
   saveL();closeEM();render();
+  setTimeout(refreshActiveBS,60);
 }
 function closeEM(){document.getElementById('em').classList.add('hidden');emTarget=null;}
 
