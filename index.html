@@ -249,7 +249,7 @@ h1{font-family:var(--fd);font-size:22px;color:var(--ac);}
 .cday.has-overdue{border-left:2px solid rgba(243,139,168,.5);}
 
 /* ── MODALS ── */
-.ov{position:fixed;inset:0;background:rgba(0,0,0,.75);display:flex;align-items:flex-end;justify-content:center;z-index:100;backdrop-filter:blur(4px);}
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.75);display:flex;align-items:flex-end;justify-content:center;z-index:300;backdrop-filter:blur(4px);}
 .ov.hidden{display:none;}
 .modal{background:var(--sf);border:1px solid var(--bd2);border-radius:16px 16px 0 0;padding:22px 20px;width:100%;max-width:520px;max-height:85vh;overflow-y:auto;}
 .modal h3{font-size:15px;margin-bottom:14px;}
@@ -1703,6 +1703,7 @@ function renderS(s,rootId){
         </div>
       </div>
       <div class="sc-acts">
+        <button class="act" style="font-size:11px" onclick="bsAddToSubtask('${s.id}','${rootId}',event)">＋</button>
         <button class="act" style="font-size:11px" onclick="openEM('s','${s.id}','${rootId}');event.stopPropagation()">✏️</button>
         <button class="act" style="font-size:11px" onclick="dupS('${s.id}','${rootId}');event.stopPropagation()">⧉</button>
         <button class="act del" style="font-size:11px" onclick="delS('${s.id}','${rootId}');event.stopPropagation()">🗑</button>
@@ -1732,6 +1733,35 @@ function renderS(s,rootId){
 
 // ════════════════════════════════
 //  BOTTOM SHEET
+// addSInBS: used when adding tasks from within a bottom sheet
+function addSInBS(){
+  if(!formTarget)return;
+  const{rootId,parentId}=formTarget;
+  const title=document.getElementById('sf-ti')?.value.trim()||'';
+  const relVisible=document.getElementById('dl-rel')?.classList.contains('show');
+  let dl='';
+  if(relVisible){dl=formTarget.computedDL||document.getElementById('sf-dl-rel')?.value||'';}
+  else{dl=document.getElementById('sf-dl')?.value||'';}
+  const tot=Math.max(1,parseInt(document.getElementById('sf-tot')?.value)||1);
+  const subject=document.getElementById('sf-sub')?.value.trim()||'';
+  const fields={};
+  formFields.forEach(fid=>{const el=document.getElementById(`ff-${fid}`);if(el&&el.value.trim())fields[fid]=el.value.trim();});
+  const sub={id:gid(),title,subject,fields,deadline:dl||null,totalItems:tot,progress:0,done:false,subtasks:[],expanded:false};
+  const r=P.find(x=>x.id===rootId);if(!r)return;
+  if(parentId===rootId){r.subtasks.push(sub);}
+  else{const pn=find(parentId,r.subtasks||[]);if(pn){pn.subtasks=pn.subtasks||[];pn.subtasks.push(sub);}}
+  saveL();closeForm();formFields=new Set();
+  setTimeout(()=>{
+    if(bsStack.length===0)return;
+    if(document.getElementById('bs2').classList.contains('show')){
+      const frame=bsStack[bsStack.length-1];
+      const s=find(frame.subtaskId,r.subtasks||[]);
+      if(s)renderBS2(s,frame.parentId);
+    } else {
+      renderBS1(r);
+    }
+  },50);
+}
 // ════════════════════════════════
 // bsStack: [{parentId, subtaskId(for bs2)}]
 let bsStack=[];
@@ -1824,22 +1854,46 @@ function closeBSTop(){
   else{closeBSAll();}
 }
 
+function bsAddToSubtask(subtaskId, rootId, event){
+  // Open BS2 for this subtask first, then show add form
+  event?.stopPropagation();
+  const r=P.find(x=>x.id===rootId);if(!r)return;
+  const s=find(subtaskId,r.subtasks||[]);if(!s)return;
+  // if bs2 is already showing this subtask, just trigger add
+  const currentFrame=bsStack[bsStack.length-1];
+  if(document.getElementById('bs2').classList.contains('show')&&currentFrame?.subtaskId===subtaskId){
+    bsAddTask(1);
+    return;
+  }
+  // open bs2 for this subtask
+  openBS2(subtaskId,rootId,event);
+  setTimeout(()=>bsAddTask(1),200);
+}
+
 function bsAddTask(layer){
-  // layer 0=bs1(subtasks of parent), 1=bs2(sub-subtasks)
-  const frame=bsStack[layer];if(!frame)return;
+  // layer 0=bs1, 1=bs2
+  // bs1 frame is always bsStack[0], bs2 frame is bsStack[bsStack.length-1]
+  const frame=layer===0?bsStack[0]:bsStack[bsStack.length-1];
+  if(!frame)return;
   const rootId=frame.parentId;
   const parentId=layer===0?rootId:(frame.subtaskId||rootId);
   const formContainerId=layer===0?'sf-bs1':'sf-bs2';
   closeForm();
-  formTarget={type:'sub',cid:formContainerId,rootId,parentId,prevDL:null};
-  // find prevDL
+  // find prevDL from last sibling
+  let prevDL=null;
   const r=P.find(x=>x.id===rootId);
   if(r){
     const sibs=parentId===rootId?(r.subtasks||[]):((find(parentId,r.subtasks||[])||{}).subtasks||[]);
-    for(let i=sibs.length-1;i>=0;i--){if(sibs[i].deadline){formTarget.prevDL=sibs[i].deadline;break;}}
+    for(let i=sibs.length-1;i>=0;i--){if(sibs[i].deadline){prevDL=sibs[i].deadline;break;}}
   }
+  formTarget={type:'sub',cid:formContainerId,rootId,parentId,prevDL};
   const container=document.getElementById(formContainerId);if(!container)return;
-  container.innerHTML=buildSubForm(rootId,parentId,formTarget.prevDL);
+  container.innerHTML=buildSubForm(rootId,parentId,prevDL);
+  // scroll form into view
+  setTimeout(()=>{
+    const bodyId=layer===0?'bs1-body':'bs2-body';
+    document.getElementById(formContainerId)?.scrollIntoView({behavior:'smooth',block:'nearest'});
+  },100);
   document.getElementById('sf-ti')?.focus();
 }
 
@@ -2328,7 +2382,7 @@ function buildSubForm(rootId,parentId,prevDL){
     </div>
     <div class="fa">
       <button class="bno" onclick="closeForm()">キャンセル</button>
-      <button class="bok" onclick="addS()">追加</button>
+      <button class="bok" onclick="bsStack.length>0?addSInBS():addS()">追加</button>
     </div>
   </div>`;
 }
