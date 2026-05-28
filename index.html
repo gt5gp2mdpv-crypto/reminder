@@ -910,10 +910,25 @@ async function subscribePush(){
     scheduleAllNotifications();
     const schedule=JSON.parse(localStorage.getItem('sf4-notif-schedule')||'[]');
     console.log('[PUSH] Sending schedule to server:', schedule.length, 'items');
+    // Detect Declarative Web Push support (iOS 18.4+ / Safari 18.4+)
+    // iOS 18.4 Safari reports as "Version/18.4" in UA
+    const ua=navigator.userAgent;
+    const iOSVer=ua.match(/OS (\d+)_(\d+)/);
+    const safariVer=ua.match(/Version\/(\d+)\.(\d+)/);
+    const supportsDeclarative=
+      (iOSVer&&parseInt(iOSVer[1])>=18&&parseInt(iOSVer[2])>=4)||
+      (safariVer&&parseInt(safariVer[1])>=18&&parseInt(safariVer[2])>=4)||
+      ('PushManager' in window && window.PushManager.supportedContentEncodings?.includes('aes128gcm'));
+    console.log('[PUSH] Declarative Web Push supported:', !!supportsDeclarative);
+
     const res=await fetch(url+'/subscribe',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({subscription:JSON.parse(JSON.stringify(sub)),schedule})
+      body:JSON.stringify({
+        subscription:JSON.parse(JSON.stringify(sub)),
+        schedule,
+        declarative:!!supportsDeclarative
+      })
     });
     if(!res.ok){
       const errText=await res.text();
@@ -922,7 +937,7 @@ async function subscribePush(){
     const resData=await res.json();
     console.log('[PUSH] Server response:', resData);
     statusEl.style.color='var(--ac3)';
-    statusEl.textContent='✅ 購読登録完了！'+(resData.scheduled?` (${resData.scheduled}件スケジュール済み)`:'');
+    statusEl.textContent='✅ 購読登録完了！'+(resData.scheduled?` (${resData.scheduled}件スケジュール済み)`:'')+' '+(resData.declarative?'[宣言型]':'[従来型]');
   }catch(e){
     statusEl.style.color='var(--exp)';
     statusEl.textContent='❌ エラー: '+e.message;
