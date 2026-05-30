@@ -265,6 +265,8 @@ h1{font-family:var(--fd);font-size:22px;color:var(--ac);}
 .empty .ico{font-size:32px;margin-bottom:10px;opacity:.4;}
 .empty p{font-size:12px;}
 input[type=checkbox]{accent-color:var(--ac);}
+.srs-badge{font-size:10px;font-family:var(--fm);padding:1px 6px;border-radius:10px;background:rgba(166,227,161,.15);color:var(--ac3);margin-left:4px;}
+.cnt-srs-alert{background:rgba(243,139,168,.25)!important;color:var(--exp)!important;}
 .lc-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:12px;}
 .lc-head{text-align:center;font-size:10px;color:var(--td);padding:3px 0;}
 .lc-day{aspect-ratio:1;display:flex;align-items:center;justify-content:center;border-radius:50%;font-size:13px;cursor:pointer;transition:all .15s;border:1px solid transparent;}
@@ -327,6 +329,10 @@ input[type=checkbox]{accent-color:var(--ac);}
       <div class="nsep"></div>
       <button class="nt" data-tab="calendar" onclick="sw('calendar')">
         <span class="dot" style="background:var(--td)"></span>📅 カレンダー
+      </button>
+      <button class="nt" data-tab="srs" onclick="sw('srs')">
+        <span class="dot" style="background:#a6e3a1"></span>🧠 今日の復習
+        <span class="cnt" id="cnt-srs" style="background:transparent">0</span>
       </button>
       <div class="nbot">
         <button class="nt" style="font-size:12px;padding:8px 10px;gap:6px" onclick="openGhModal()">
@@ -452,6 +458,26 @@ input[type=checkbox]{accent-color:var(--ac);}
       <button class="bno" onclick="closeLessonModal()">キャンセル</button>
       <button class="bok" id="lesson-modal-save" onclick="saveLessonSetup()">生成</button>
     </div>
+  </div>
+</div>
+
+<!-- SRS Evaluation Bottom Sheet -->
+<div class="ov hidden" id="srs-modal">
+  <div class="modal" style="border-radius:16px 16px 0 0;padding:24px 20px 36px">
+    <h3 style="text-align:center;margin-bottom:6px">🧠 どのくらい覚えていましたか？</h3>
+    <p id="srs-task-label" style="text-align:center;font-size:12px;color:var(--td);margin-bottom:20px"></p>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <button onclick="submitSRS('again')" style="padding:16px;border-radius:var(--r);border:2px solid var(--exp);background:rgba(243,139,168,.1);color:var(--exp);font-size:15px;font-weight:600;cursor:pointer">
+        🔴 もう一度 (Again)<br><span style="font-size:11px;font-weight:400;opacity:.8">全く思い出せなかった → 明日また</span>
+      </button>
+      <button onclick="submitSRS('hard')" style="padding:16px;border-radius:var(--r);border:2px solid var(--wrn);background:rgba(249,226,175,.1);color:var(--wrn);font-size:15px;font-weight:600;cursor:pointer">
+        🟡 ギリギリ (Hard)<br><span style="font-size:11px;font-weight:400;opacity:.8">少し苦労した → 間隔を短めに</span>
+      </button>
+      <button onclick="submitSRS('easy')" style="padding:16px;border-radius:var(--r);border:2px solid var(--ac3);background:rgba(166,227,161,.1);color:var(--ac3);font-size:15px;font-weight:600;cursor:pointer">
+        🟢 余裕 (Easy)<br><span style="font-size:11px;font-weight:400;opacity:.8">完璧に覚えていた → 次回を延ばす</span>
+      </button>
+    </div>
+    <button class="bno" style="width:100%;margin-top:14px" onclick="closeSRSModal()">キャンセル</button>
   </div>
 </div>
 
@@ -1570,6 +1596,7 @@ function render(){
   updateCounts();
   const el=document.getElementById('right');
   if(curTab==='calendar'){renderCal(el);return;}
+  if(curTab==='srs'){renderSRS(el);return;}
   let parents=curTab==='all'?[...P]:P.filter(p=>p.tab===curTab);
   if(curSubject!=='all') parents=parents.filter(p=>p.sciSubject===curSubject);
   // sort
@@ -1680,6 +1707,7 @@ function renderP(p){
           ${p.subject?`<span class="tag">📖 ${esc(p.subject)}</span>`:''}
           ${p.repeat?.enabled?`<span class="badge repeat">🔁 繰り返し</span>`:''}
           ${p._lessonParent?`<span class="badge" style="background:rgba(137,220,235,.12);color:var(--cg)">📖 授業</span>`:''}
+          ${p.srsActive?`<span class="srs-badge">🔁 復習中</span>`:''}
         </div>
       </div>
       <div class="pc-acts">
@@ -1761,7 +1789,8 @@ function addSInBS(){
   const subject=document.getElementById('sf-sub')?.value.trim()||'';
   const fields={};
   formFields.forEach(fid=>{const el=document.getElementById(`ff-${fid}`);if(el&&el.value.trim())fields[fid]=el.value.trim();});
-  const sub={id:gid(),title,subject,fields,deadline:dl||null,totalItems:tot,progress:0,done:false,subtasks:[],expanded:false};
+  const srsOn=document.getElementById('sf-srs')?.checked||false;
+  const sub={id:gid(),title,subject,fields,deadline:dl||null,totalItems:tot,progress:0,done:false,subtasks:[],expanded:false,srsActive:srsOn,reps:0,interval:1,ef:2.5,dueDate:new Date().toISOString()};
   const r=P.find(x=>x.id===rootId);if(!r)return;
   if(parentId===rootId){r.subtasks.push(sub);}
   else{const pn=find(parentId,r.subtasks||[]);if(pn){pn.subtasks=pn.subtasks||[];pn.subtasks.push(sub);}}
@@ -1945,9 +1974,170 @@ function refreshActiveBS(){
   }
 }
 
+// ════════════════════════════════
+//  SRS (間隔反復)
+// ════════════════════════════════
+let srsTargetId = null;
+let srsTargetRootId = null;
+
+function getSRSDefaults(task) {
+  return {
+    srsActive: task.srsActive || false,
+    reps: task.reps || 0,
+    interval: task.interval || 1,
+    ef: task.ef || 2.5,
+    dueDate: task.dueDate || new Date().toISOString(),
+  };
+}
+
+function updateTaskSRS(task, rating) {
+  let reps = task.reps || 0;
+  let ef = task.ef || 2.5;
+  let interval = task.interval || 1;
+  if (rating === 'again') {
+    reps = 0; interval = 1;
+  } else if (rating === 'hard') {
+    reps++;
+    ef = Math.max(1.3, ef - 0.15);
+    interval = reps === 1 ? 1 : (reps === 2 ? 4 : Math.round(interval * ef));
+  } else if (rating === 'easy') {
+    reps++;
+    ef = Math.min(2.5, ef + 0.15);
+    interval = reps === 1 ? 1 : (reps === 2 ? 6 : Math.round(interval * ef));
+  }
+  const nextDue = new Date();
+  nextDue.setDate(nextDue.getDate() + interval);
+  nextDue.setHours(0, 0, 0, 0);
+  return { ...task, reps, ef, interval, dueDate: nextDue.toISOString() };
+}
+
+function getSRSDueTasks() {
+  const now = new Date(); now.setHours(23,59,59,999);
+  const due = [];
+  P.forEach(p => {
+    // check parent itself
+    if (p.srsActive && p.dueDate && new Date(p.dueDate) <= now) {
+      due.push({ task: p, rootId: p.id, isParent: true });
+    }
+    function walk(subs, rootId) {
+      subs.forEach(s => {
+        if (s.srsActive && s.dueDate && new Date(s.dueDate) <= now) {
+          due.push({ task: s, rootId, isParent: false });
+        }
+        walk(s.subtasks || [], rootId);
+      });
+    }
+    walk(p.subtasks || [], p.id);
+  });
+  due.sort((a, b) => new Date(a.task.dueDate) - new Date(b.task.dueDate));
+  return due;
+}
+
+function renderSRS(el) {
+  const due = getSRSDueTasks();
+  if (!due.length) {
+    el.innerHTML = `<div class="empty"><div class="ico">🎉</div><p>今日の復習はありません！<br>すべて完了しています。</p></div>`;
+    return;
+  }
+  const cards = due.map(({ task, rootId, isParent }) => {
+    const p = P.find(x => x.id === (isParent ? task.id : rootId));
+    const parentLabel = p ? p.title : '';
+    const taskLabel = isParent ? task.title : (task.title || Object.values(task.fields || {}).filter(Boolean).join(' ') || '');
+    const fieldStr = !isParent ? Object.entries(task.fields || {}).filter(([k,v]) => v)
+      .map(([k,v]) => (FIELD_PREFIX[k]||'') + v).join(' · ') : '';
+    const daysOverdue = Math.floor((Date.now() - new Date(task.dueDate)) / 86400000);
+    const overdueLabel = daysOverdue > 0 ? `<span class="badge expired">${daysOverdue}日遅れ</span>` :
+      `<span class="badge ok">今日</span>`;
+    const nextDue = (n) => {
+      const d = new Date(); d.setDate(d.getDate() + n);
+      return `${d.getMonth()+1}/${d.getDate()}`;
+    };
+    return `<div class="pc" style="margin-bottom:10px">
+      <div class="pc-head" style="padding:12px 14px">
+        <div class="pc-info">
+          ${parentLabel && !isParent ? `<div style="font-size:10px;color:var(--td);margin-bottom:2px">📖 ${esc(parentLabel)}</div>` : ''}
+          <div class="pc-title">${esc(taskLabel || parentLabel)}</div>
+          ${fieldStr ? `<div style="font-size:11px;color:var(--td);margin-top:2px">${esc(fieldStr)}</div>` : ''}
+          <div class="pc-meta" style="margin-top:4px">
+            ${overdueLabel}
+            <span class="tag">🔁 ${task.reps||0}回目 · EF${(task.ef||2.5).toFixed(1)}</span>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;padding:0 14px 12px">
+        <button onclick="openSRSModal('${task.id}','${rootId}',event)"
+          style="flex:1;padding:10px;border-radius:var(--rs);border:none;background:var(--ac);color:white;font-size:13px;font-weight:600;cursor:pointer">
+          ✅ 復習した → 評価する
+        </button>
+      </div>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `
+  <div>
+    <div style="font-size:16px;font-weight:700;margin-bottom:4px">🧠 今日の復習</div>
+    <div style="font-size:12px;color:var(--td);margin-bottom:16px">${due.length}件 / 復習ループ対象</div>
+    ${cards}
+  </div>`;
+}
+
+function openSRSModal(taskId, rootId, event) {
+  event?.stopPropagation();
+  srsTargetId = taskId;
+  srsTargetRootId = rootId;
+  // find task label
+  let label = '';
+  if (taskId === rootId) {
+    const p = P.find(x => x.id === taskId);
+    label = p ? p.title : '';
+  } else {
+    const r = P.find(x => x.id === rootId);
+    if (r) {
+      const s = find(taskId, r.subtasks || []);
+      label = s ? (s.title || Object.values(s.fields||{}).filter(Boolean).join(' ')) : '';
+      if (r.title) label = r.title + (label ? ' — ' + label : '');
+    }
+  }
+  document.getElementById('srs-task-label').textContent = label;
+  document.getElementById('srs-modal').classList.remove('hidden');
+}
+
+function closeSRSModal() {
+  document.getElementById('srs-modal').classList.add('hidden');
+  srsTargetId = null; srsTargetRootId = null;
+}
+
+function submitSRS(rating) {
+  if (!srsTargetId) return;
+  const isParent = srsTargetId === srsTargetRootId;
+  if (isParent) {
+    const p = P.find(x => x.id === srsTargetId);
+    if (p) Object.assign(p, updateTaskSRS(p, rating));
+  } else {
+    const r = P.find(x => x.id === srsTargetRootId);
+    if (r) {
+      const s = find(srsTargetId, r.subtasks || []);
+      if (s) Object.assign(s, updateTaskSRS(s, rating));
+    }
+  }
+  saveL();
+  closeSRSModal();
+  // re-render SRS view
+  const el = document.getElementById('right');
+  if (curTab === 'srs') renderSRS(el);
+  updateCounts();
+}
+
 function updateCounts(){
   document.getElementById('cnt-all').textContent=P.length;
   TABS.forEach(t=>{const e=document.getElementById(`cnt-${t}`);if(e)e.textContent=P.filter(p=>p.tab===t).length;});
+  // SRS due count
+  const srsDue=getSRSDueTasks().length;
+  const srsEl=document.getElementById('cnt-srs');
+  if(srsEl){
+    srsEl.textContent=srsDue||'';
+    srsEl.className=srsDue>0?'cnt cnt-srs-alert':'cnt';
+  }
 }
 
 // ════════════════════════════════
@@ -2283,6 +2473,10 @@ function showPF(){
       <span class="flbl">教材詳細（省略可）</span>
       <input class="fi" id="pf-sub" placeholder="例: 数学II・B、システム英単語など">
     </div>
+    <div class="nc-row" style="padding:6px 0;border:none">
+      <input type="checkbox" class="nc-chk" id="pf-srs">
+      <label class="nc-lbl" for="pf-srs" style="font-size:13px">🔁 復習ループ（間隔反復）を有効にする</label>
+    </div>
     ${repeatFormHTML(null)}
     <div class="fa">
       <button class="bno" onclick="closeForm()">キャンセル</button>
@@ -2296,11 +2490,12 @@ function showPF(){
 }
 function addP(){
   const t=document.getElementById('pf-ti')?.value.trim();if(!t)return;
+  const srsOnP=document.getElementById('pf-srs')?.checked||false;
   const p={id:gid(),tab:document.getElementById('pf-tab').value,type:document.getElementById('pf-type').value,
     title:t,subject:document.getElementById('pf-sub')?.value.trim()||'',
     sciSubject:document.getElementById('pf-sci')?.value||'',
     repeat:getRepeatConfig(),
-    subtasks:[],expanded:false};
+    subtasks:[],expanded:false,srsActive:srsOnP,reps:0,interval:1,ef:2.5,dueDate:new Date().toISOString()};
   P.push(p);
   if(p.repeat?.enabled)generateRepeatSubtasks(p);
   saveL();closeForm();render();
@@ -2347,6 +2542,10 @@ function buildSubForm(rootId,parentId,prevDL){
     <div class="fr">
       <span class="flbl" style="width:100%">教材名（省略可・サブ教材の場合に入力）</span>
       <input class="fi" id="sf-sub" placeholder="例: 英語長文問題精講">
+    </div>
+    <div class="nc-row" style="padding:6px 0;border:none">
+      <input type="checkbox" class="nc-chk" id="sf-srs">
+      <label class="nc-lbl" for="sf-srs" style="font-size:13px">🔁 復習ループ（間隔反復）を有効にする</label>
     </div>
     <div style="margin-bottom:6px">
       <div class="flbl" style="margin-bottom:6px">区切り項目を選択（複数可）</div>
@@ -2450,7 +2649,8 @@ function addS(){
   const subject=document.getElementById('sf-sub')?.value.trim()||'';
   const fields={};
   formFields.forEach(fid=>{const el=document.getElementById(`ff-${fid}`);if(el&&el.value.trim())fields[fid]=el.value.trim();});
-  const sub={id:gid(),title,subject,fields,deadline:dl||null,totalItems:tot,progress:0,done:false,subtasks:[],expanded:false};
+  const srsOn=document.getElementById('sf-srs')?.checked||false;
+  const sub={id:gid(),title,subject,fields,deadline:dl||null,totalItems:tot,progress:0,done:false,subtasks:[],expanded:false,srsActive:srsOn,reps:0,interval:1,ef:2.5,dueDate:new Date().toISOString()};
   const r=P.find(x=>x.id===rootId);if(!r)return;
   if(parentId===rootId){r.subtasks.push(sub);}
   else{const pn=find(parentId,r.subtasks||[]);if(pn){pn.subtasks=pn.subtasks||[];pn.subtasks.push(sub);}}
@@ -2544,6 +2744,10 @@ function openEM(kind,id,rootId){
       <div class="mf"><label>タブ</label><select id="em-tab">${TABS.map(t=>`<option value="${t}"${t===p.tab?' selected':''}>${t}</option>`).join('')}</select></div>
       <div class="mf"><label>タイプ</label><select id="em-type">${TYPES.map(t=>`<option value="${t}"${t===p.type?' selected':''}>${t}</option>`).join('')}</select></div>
       <div class="mf"><label>科目</label><select id="em-sci"><option value="">未設定</option>${SUBJECTS.map(s=>`<option value="${s}"${s===p.sciSubject?' selected':''}>${s}</option>`).join('')}</select></div>
+      <div class="nc-row" style="padding:6px 0;border:none;margin-top:4px">
+        <input type="checkbox" class="nc-chk" id="em-srs" ${p.srsActive?'checked':''}>
+        <label class="nc-lbl" for="em-srs" style="font-size:13px">🔁 復習ループ（間隔反復）を有効にする</label>
+      </div>
       <div class="mf"><label>教材詳細</label><input id="em-sub" value="${esc(p.subject||'')}"></div>
       <div style="margin-top:10px">${repeatFormHTML(p.repeat||null)}</div>`;
   } else {
@@ -2570,6 +2774,9 @@ function commitEM(){
       p.tab=document.getElementById('em-tab').value;
       p.type=document.getElementById('em-type').value;
       p.sciSubject=document.getElementById('em-sci')?.value||'';
+      const wasSRS=p.srsActive;
+      p.srsActive=document.getElementById('em-srs')?.checked||false;
+      if(p.srsActive&&!wasSRS){p.reps=0;p.interval=1;p.ef=2.5;p.dueDate=new Date().toISOString();}
       p.subject=document.getElementById('em-sub').value.trim();
       const newRep=getRepeatConfig();
       const repChanged=JSON.stringify(newRep)!==JSON.stringify(p.repeat);
