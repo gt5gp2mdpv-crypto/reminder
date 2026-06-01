@@ -2023,25 +2023,19 @@ function getTomorrowSRSTasks() {
   const tmEnd   = new Date(); tmEnd.setDate(tmEnd.getDate()+1);     tmEnd.setHours(23,59,59,999);
   const due = [];
   P.forEach(p => {
-    if (p.srsActive && p.dueDate) {
-      const d = new Date(p.dueDate);
-      if (d >= tmStart && d <= tmEnd) due.push({ label: p.title, rootId: p.id });
-    }
-    function walk(subs, rootId) {
+    function walk(subs, parentSRS) {
       subs.forEach(s => {
-        const eff = s.srsActive || p.srsActive;
-        if (eff && s.dueDate) {
+        if (parentSRS && s.dueDate) {
           const d = new Date(s.dueDate);
           if (d >= tmStart && d <= tmEnd) {
-            const parentLabel = p.title;
             const taskLabel = s.title || Object.values(s.fields||{}).filter(Boolean).join(' ') || '';
-            due.push({ label: taskLabel ? `${parentLabel} — ${taskLabel}` : parentLabel, rootId });
+            due.push({ label: taskLabel ? `${p.title} — ${taskLabel}` : p.title });
           }
         }
-        walk(s.subtasks||[], rootId);
+        walk(s.subtasks||[], s.srsActive||false);
       });
     }
-    walk(p.subtasks||[], p.id);
+    walk(p.subtasks||[], p.srsActive||false);
   });
   return due;
 }
@@ -2079,20 +2073,22 @@ function getSRSDueTasks() {
   const now = new Date(); now.setHours(23,59,59,999);
   const due = [];
   P.forEach(p => {
-    // parent itself
-    if (p.srsActive && p.dueDate && new Date(p.dueDate) <= now) {
-      due.push({ task: p, rootId: p.id, isParent: true });
-    }
-    function walk(subs, rootId) {
+    // parent srsActive=true means its direct children are loop targets
+    // parent itself is NEVER a review target
+    function walk(subs, rootId, parentSRS) {
       subs.forEach(s => {
-        const effectiveSRS = s.srsActive || p.srsActive || false;
-        if (effectiveSRS && s.dueDate && new Date(s.dueDate) <= now) {
+        // this task is a direct target if:
+        //   - its own srsActive=true (its children are targets, not itself)
+        //   - OR parentSRS=true (parent flagged children as targets)
+        const isSelf = parentSRS; // parent said "my children are targets"
+        if (isSelf && s.dueDate && new Date(s.dueDate) <= now) {
           due.push({ task: s, rootId, isParent: false });
         }
-        walk(s.subtasks || [], rootId);
+        // recurse: s.srsActive=true means s's children are targets
+        walk(s.subtasks || [], rootId, s.srsActive || false);
       });
     }
-    walk(p.subtasks || [], p.id);
+    walk(p.subtasks || [], p.id, p.srsActive || false);
   });
   due.sort((a, b) => new Date(a.task.dueDate) - new Date(b.task.dueDate));
   return due;
@@ -2792,7 +2788,7 @@ function buildSubForm(rootId,parentId,prevDL){
     </div>
     <div class="nc-row" style="padding:6px 0;border:none">
       <input type="checkbox" class="nc-chk" id="sf-srs">
-      <label class="nc-lbl" for="sf-srs" style="font-size:13px">🔁 復習ループ（間隔反復）を有効にする</label>
+      <label class="nc-lbl" for="sf-srs" style="font-size:13px">🔁 サブタスクを復習ループに入れる（このタスクのサブタスクが対象）</label>
     </div>
     <div style="margin-bottom:6px">
       <div class="flbl" style="margin-bottom:6px">区切り項目を選択（複数可）</div>
@@ -3005,6 +3001,10 @@ function openEM(kind,id,rootId){
     document.getElementById('em-b').innerHTML=`
       <div class="mf"><label>タスク名</label><input id="em-tv" value="${esc(s.title)}"></div>
       <div class="mf"><label>教材名（省略可）</label><input id="em-sub" value="${esc(s.subject||'')}"></div>
+      <div class="nc-row" style="padding:6px 0;border:none;margin-top:4px">
+        <input type="checkbox" class="nc-chk" id="em-srs-sub" ${s.srsActive?'checked':''}>
+        <label class="nc-lbl" for="em-srs-sub" style="font-size:13px">🔁 サブタスクを復習ループに入れる（サブサブタスクが対象）</label>
+      </div>
       ${RANGE_FIELDS.map(rf=>`
       <div class="mf"><label>${rf.label}</label><input id="em-f-${rf.id}" value="${esc(f[rf.id]||'')}" placeholder="${rf.ph}"></div>`).join('')}
       <div class="mf"><label>締め切り</label><input id="em-dl" type="datetime-local" value="${dlv}"></div>
@@ -3034,6 +3034,14 @@ function commitEM(){
     const r=P.find(x=>x.id===rootId);const s=r?find(id,r.subtasks||[]):null;if(s){
       s.title=document.getElementById('em-tv').value.trim();
       s.subject=document.getElementById('em-sub').value.trim();
+      const wasSubSRS=s.srsActive;
+      s.srsActive=document.getElementById('em-srs-sub')?.checked||false;
+      if(s.srsActive&&!wasSubSRS){
+        // initialize SRS fields for sub-subtasks on first enable
+        (s.subtasks||[]).forEach(c=>{
+          if(!c.dueDate){c.reps=0;c.interval=1;c.ef=2.5;c.dueDate=new Date().toISOString();}
+        });
+      }
       s.deadline=document.getElementById('em-dl').value||null;
       s.totalItems=Math.max(1,parseInt(document.getElementById('em-tot').value)||1);
       const fields={};
