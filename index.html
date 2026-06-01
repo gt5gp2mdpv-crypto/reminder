@@ -465,15 +465,21 @@ input[type=checkbox]{accent-color:var(--ac);}
 <div class="ov hidden" id="srs-modal">
   <div class="modal" style="border-radius:16px 16px 0 0;padding:24px 20px 36px">
     <h3 style="text-align:center;margin-bottom:6px">🧠 どのくらい覚えていましたか？</h3>
-    <p id="srs-task-label" style="text-align:center;font-size:12px;color:var(--td);margin-bottom:20px"></p>
+    <p id="srs-task-label" style="text-align:center;font-size:12px;color:var(--td);margin-bottom:12px"></p>
+    <div id="srs-title-wrap" style="display:none;margin-bottom:16px">
+      <label style="font-size:11px;color:var(--td);display:block;margin-bottom:4px">📝 内容メモ（任意）</label>
+      <input id="srs-title-input" type="text" placeholder="例：中間テスト"
+        style="width:100%;padding:10px 12px;background:var(--sf3);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:16px;outline:none;box-sizing:border-box">
+      <div style="font-size:10px;color:var(--td);margin-top:3px">入力するとタスク名に「：入力内容」が追加されます</div>
+    </div>
     <div style="display:flex;flex-direction:column;gap:10px">
-      <button onclick="submitSRS('again')" style="padding:16px;border-radius:var(--r);border:2px solid var(--exp);background:rgba(243,139,168,.1);color:var(--exp);font-size:15px;font-weight:600;cursor:pointer">
+      <button onclick="submitSRS('again')" style="padding:16px;border-radius:var(--rs);border:2px solid var(--exp);background:rgba(243,139,168,.1);color:var(--exp);font-size:15px;font-weight:600;cursor:pointer">
         🔴 もう一度 (Again)<br><span style="font-size:11px;font-weight:400;opacity:.8">全く思い出せなかった → 明日また</span>
       </button>
-      <button onclick="submitSRS('hard')" style="padding:16px;border-radius:var(--r);border:2px solid var(--wrn);background:rgba(249,226,175,.1);color:var(--wrn);font-size:15px;font-weight:600;cursor:pointer">
+      <button onclick="submitSRS('hard')" style="padding:16px;border-radius:var(--rs);border:2px solid var(--wrn);background:rgba(249,226,175,.1);color:var(--wrn);font-size:15px;font-weight:600;cursor:pointer">
         🟡 ギリギリ (Hard)<br><span style="font-size:11px;font-weight:400;opacity:.8">少し苦労した → 間隔を短めに</span>
       </button>
-      <button onclick="submitSRS('easy')" style="padding:16px;border-radius:var(--r);border:2px solid var(--ac3);background:rgba(166,227,161,.1);color:var(--ac3);font-size:15px;font-weight:600;cursor:pointer">
+      <button onclick="submitSRS('easy')" style="padding:16px;border-radius:var(--rs);border:2px solid var(--ac3);background:rgba(166,227,161,.1);color:var(--ac3);font-size:15px;font-weight:600;cursor:pointer">
         🟢 余裕 (Easy)<br><span style="font-size:11px;font-weight:400;opacity:.8">完璧に覚えていた → 次回を延ばす</span>
       </button>
     </div>
@@ -2096,62 +2102,140 @@ function getLessonParents() {
   return P.filter(p => p._lessonParent);
 }
 
-function renderReviewTab(el) {
-  const lessonParents = getLessonParents();
-  if (!lessonParents.length) {
-    el.innerHTML = `<div class="empty"><div class="ico">📖</div><p>授業設定から授業復習タスクを追加してください。</p></div>`;
-    return;
-  }
-  const cards = lessonParents.map(p => {
-    const subs = (p.subtasks || []).filter(s => s._lesson);
-    const totalReviews = subs.reduce((sum, s) => sum + (s.reviewCount || 0), 0);
-    const doneCount = subs.filter(s => s.done).length;
-    // sort by date
-    const sorted = [...subs].sort((a, b) => new Date(a.deadline) - new Date(b.deadline));
-    const rows = sorted.map(s => {
+function openReviewBS(parentId, event) {
+  event?.stopPropagation();
+  const p = P.find(x => x.id === parentId); if (!p) return;
+  bsStack = [{ parentId, subtaskId: null }];
+  document.getElementById('bs1-title').textContent = p.title;
+  document.getElementById('bs1-ex').style.display = 'none';
+  document.getElementById('bs1-add').style.display = 'none';
+  const body = document.getElementById('bs1-body');
+
+  // collect subtasks to show
+  const subs = p._lessonParent
+    ? (p.subtasks||[]).filter(s => s._lesson)
+    : (p.subtasks||[]);
+
+  if (!subs.length) {
+    body.innerHTML = `<div class="empty"><div class="ico">📋</div><p>サブタスクがありません</p></div>`;
+  } else {
+    const sorted = [...subs].sort((a,b) => new Date(a.deadline||0) - new Date(b.deadline||0));
+    body.innerHTML = sorted.map(s => {
       const rc = s.reviewCount || 0;
+      const now = Date.now();
       const dlBadge = s.dueDate ? (() => {
-        const now = Date.now();
         const t = new Date(s.dueDate).getTime();
         if (t <= now) return `<span class="badge expired">復習待ち</span>`;
         const days = Math.ceil((t - now) / 86400000);
-        return `<span class="badge ok">${days}日後に復習</span>`;
+        return `<span class="badge ok">${days}日後</span>`;
       })() : '';
-      return `<div style="display:flex;align-items:center;gap:8px;padding:7px 12px;border-bottom:1px solid var(--bd)">
-        <div style="flex:1;min-width:0">
-          <div style="font-size:13px;font-weight:500">${esc(s.title)}</div>
-          <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:2px">${dlBadge}</div>
-        </div>
-        <div style="font-size:11px;font-family:var(--fm);color:var(--td);white-space:nowrap;flex-shrink:0">
-          🔁 ${rc}回復習
+      const repsInfo = rc > 0
+        ? `<span class="tag">EF ${(s.ef||2.5).toFixed(1)} · ${rc}回復習済</span>` : '';
+      return `<div class="sc" style="margin-bottom:8px">
+        <div class="sc-head" style="padding:12px 14px">
+          <div class="sc-body">
+            <div class="sc-title">${esc(s.title)}</div>
+            <div class="sc-tags" style="margin-top:4px">${dlBadge}${repsInfo}</div>
+          </div>
         </div>
       </div>`;
     }).join('');
+  }
 
-    const clr = TC[p.tab] || 'var(--ac)';
-    return `<div class="pc" style="margin-bottom:12px">
-      <div class="pc-head">
-        <div class="pc-bar" style="background:${clr}"></div>
-        <div class="pc-info">
-          <div class="pc-title">${esc(p.title)}</div>
-          <div class="pc-meta">
-            <span class="tag" style="background:rgba(255,255,255,.04)">${p.tab}</span>
-            ${p.sciSubject ? `<span class="tag" style="background:${SC[p.sciSubject]||'#7f849c'}22;color:${SC[p.sciSubject]||'#7f849c'}">${p.sciSubject}</span>` : ''}
-            <span class="badge prog">📋 ${doneCount}/${subs.length}</span>
-            <span class="badge" style="background:rgba(166,227,161,.1);color:var(--ac3)">🔁 累計${totalReviews}回</span>
+  document.getElementById('bs-overlay').classList.add('show');
+  requestAnimationFrame(() => document.getElementById('bs1').classList.add('show'));
+}
+
+function renderReviewTab(el) {
+  const lessonParents = getLessonParents();
+  // also get normal SRS parents
+  const srsParents = P.filter(p => p.srsActive && !p._lessonParent);
+
+  if (!lessonParents.length && !srsParents.length) {
+    el.innerHTML = `<div class="empty"><div class="ico">📖</div><p>授業設定から授業復習タスクを追加するか、<br>タスクの復習ループを有効にしてください。</p></div>`;
+    return;
+  }
+
+  // ── 授業復習セクション ──
+  const lessonSection = lessonParents.length ? `
+    <div style="font-size:13px;font-weight:700;color:var(--td);margin:0 0 10px">📖 授業復習</div>
+    ${lessonParents.map(p => {
+      const subs = (p.subtasks||[]).filter(s=>s._lesson);
+      const totalReviews = subs.reduce((sum,s)=>sum+(s.reviewCount||0),0);
+      const clr = TC[p.tab]||'var(--ac)';
+      const rows = [...subs].sort((a,b)=>new Date(a.deadline)-new Date(b.deadline)).map(s => {
+        const rc = s.reviewCount||0;
+        const now = Date.now();
+        const dlBadge = s.dueDate ? (() => {
+          const t = new Date(s.dueDate).getTime();
+          if(t<=now) return `<span class="badge expired">復習待ち</span>`;
+          const days = Math.ceil((t-now)/86400000);
+          return `<span class="badge ok">${days}日後</span>`;
+        })() : '';
+        return `<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--bd)">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:500">${esc(s.title)}</div>
+            <div style="margin-top:3px">${dlBadge}</div>
+          </div>
+          <div style="font-size:11px;font-family:var(--fm);color:var(--td);white-space:nowrap">🔁 ${rc}回</div>
+        </div>`;
+      }).join('');
+      return `<div class="pc" style="margin-bottom:10px" onclick="openReviewBS('${p.id}',event)" style="cursor:pointer">
+        <div class="pc-head" style="cursor:pointer">
+          <div class="pc-bar" style="background:${clr}"></div>
+          <div class="pc-info" style="flex:1;min-width:0">
+            <div class="pc-title">${esc(p.title)}</div>
+            <div class="pc-meta">
+              ${p.sciSubject?`<span class="tag" style="background:${SC[p.sciSubject]||'#7f849c'}22;color:${SC[p.sciSubject]||'#7f849c'}">${p.sciSubject}</span>`:''}
+              <span class="badge prog">📋 ${subs.filter(s=>s.done).length}/${subs.length}</span>
+              <span class="badge" style="background:rgba(166,227,161,.1);color:var(--ac3)">🔁 累計${totalReviews}回</span>
+            </div>
+          </div>
+          <button class="act" style="flex-shrink:0" onclick="openLessonModal('${p.id}');event.stopPropagation()">📅</button>
+        </div>
+      </div>`;
+    }).join('')}` : '';
+
+  // ── 通常SRS復習セクション ──
+  const srsSection = srsParents.length ? `
+    <div style="font-size:13px;font-weight:700;color:var(--td);margin:16px 0 10px">🔁 復習ループ中のタスク</div>
+    ${srsParents.map(p => {
+      const clr = TC[p.tab]||'var(--ac)';
+      const allSubs = [];
+      function walkSubs(subs){subs.forEach(s=>{allSubs.push(s);walkSubs(s.subtasks||[]);});}
+      walkSubs(p.subtasks||[]);
+      const rows = allSubs.length ? allSubs.map(s => {
+        const rc = s.reviewCount||0;
+        const now = Date.now();
+        const dlBadge = s.dueDate ? (() => {
+          const t = new Date(s.dueDate).getTime();
+          if(t<=now) return `<span class="badge expired">復習待ち</span>`;
+          const days = Math.ceil((t-now)/86400000);
+          return `<span class="badge ok">${days}日後</span>`;
+        })() : '';
+        return `<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--bd)">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:500">${esc(s.title||s.fields&&Object.values(s.fields).filter(Boolean).join(' ')||'')}</div>
+            <div style="margin-top:3px">${dlBadge}</div>
+          </div>
+          <div style="font-size:11px;font-family:var(--fm);color:var(--td);white-space:nowrap">🔁 ${rc}回</div>
+        </div>`;
+      }).join('') : `<div style="padding:10px 12px;font-size:12px;color:var(--td)">サブタスクなし</div>`;
+      return `<div class="pc" style="margin-bottom:10px;cursor:pointer" onclick="openReviewBS('${p.id}',event)">
+        <div class="pc-head">
+          <div class="pc-bar" style="background:${clr}"></div>
+          <div class="pc-info">
+            <div class="pc-title">${esc(p.title)}</div>
+            <div class="pc-meta">
+              ${p.sciSubject?`<span class="tag" style="background:${SC[p.sciSubject]||'#7f849c'}22;color:${SC[p.sciSubject]||'#7f849c'}">${p.sciSubject}</span>`:''}
+              <span class="srs-badge">🔁 復習中</span>
+            </div>
           </div>
         </div>
-      </div>
-      <div>${rows}</div>
-    </div>`;
-  }).join('');
+      </div>`;
+    }).join('')}` : '';
 
-  el.innerHTML = `
-  <div>
-    <div style="font-size:16px;font-weight:700;margin-bottom:4px">📖 授業復習</div>
-    <div style="font-size:12px;color:var(--td);margin-bottom:16px">授業ごとの復習状況と履歴</div>
-    ${cards}
-  </div>`;
+  el.innerHTML = `<div>${lessonSection}${srsSection}</div>`;
 }
 
 function renderSRS(el) {
@@ -2233,6 +2317,24 @@ function openSRSModal(taskId, rootId, event) {
     }
   }
   document.getElementById('srs-task-label').textContent = label;
+  // show title input only on first review (reps===0)
+  let curReps = 0;
+  if (taskId === rootId) {
+    const p = P.find(x=>x.id===taskId);
+    curReps = p ? (p.reps||0) : 0;
+  } else {
+    const r = P.find(x=>x.id===rootId);
+    if (r) { const s = find(taskId, r.subtasks||[]); curReps = s ? (s.reps||0) : 0; }
+  }
+  const titleWrap = document.getElementById('srs-title-wrap');
+  const titleInput = document.getElementById('srs-title-input');
+  if (curReps === 0) {
+    titleWrap.style.display = 'block';
+    titleInput.value = '';
+  } else {
+    titleWrap.style.display = 'none';
+    titleInput.value = '';
+  }
   document.getElementById('srs-modal').classList.remove('hidden');
 }
 
@@ -2244,14 +2346,20 @@ function closeSRSModal() {
 function submitSRS(rating) {
   if (!srsTargetId) return;
   const isParent = srsTargetId === srsTargetRootId;
+  // apply title memo if on first review
+  const titleMemo = (document.getElementById('srs-title-input')?.value||'').trim();
   if (isParent) {
     const p = P.find(x => x.id === srsTargetId);
-    if (p) Object.assign(p, updateTaskSRS(p, rating));
+    if (p) {
+      if (titleMemo && (p.reps||0) === 0) p.title = p.title + '：' + titleMemo;
+      Object.assign(p, updateTaskSRS(p, rating));
+    }
   } else {
     const r = P.find(x => x.id === srsTargetRootId);
     if (r) {
       const s = find(srsTargetId, r.subtasks || []);
       if (s) {
+        if (titleMemo && (s.reps||0) === 0) s.title = s.title + '：' + titleMemo;
         Object.assign(s, updateTaskSRS(s, rating));
         s.reviewCount = (s.reviewCount || 0) + 1;
       }
