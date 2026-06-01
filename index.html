@@ -2098,48 +2098,63 @@ function getLessonParents() {
   return P.filter(p => p._lessonParent);
 }
 
+function openReviewBSEntry(opts, event) {
+  // opts: {parentId, subtaskId}  subtaskId=null means parent's subtasks
+  event?.stopPropagation();
+  const p = P.find(x => x.id === opts.parentId); if (!p) return;
+  let subs, title;
+  if (opts.subtaskId) {
+    const s = find(opts.subtaskId, p.subtasks||[]);
+    if (!s) return;
+    const subLabel = s.title || Object.values(s.fields||{}).filter(Boolean).join(' ') || '';
+    subs = s.subtasks || [];
+    title = `${p.title}→${subLabel}`;
+  } else {
+    subs = p.subtasks || [];
+    title = p.title;
+  }
+  openReviewBSWithSubs(title, subs, opts.parentId, event);
+}
+
 function openReviewBS(parentId, event) {
   event?.stopPropagation();
   const p = P.find(x => x.id === parentId); if (!p) return;
+  const subs = p._lessonParent ? (p.subtasks||[]).filter(s=>s._lesson) : (p.subtasks||[]);
+  openReviewBSWithSubs(p.title, subs, parentId, event);
+}
+
+function openReviewBSWithSubs(title, subs, parentId, event) {
   bsStack = [{ parentId, subtaskId: null }];
-  document.getElementById('bs1-title').textContent = p.title;
+  document.getElementById('bs1-title').textContent = title;
   document.getElementById('bs1-ex').style.display = 'none';
   document.getElementById('bs1-add').style.display = 'none';
   const body = document.getElementById('bs1-body');
-
-  // collect subtasks to show
-  const subs = p._lessonParent
-    ? (p.subtasks||[]).filter(s => s._lesson)
-    : (p.subtasks||[]);
-
   if (!subs.length) {
     body.innerHTML = `<div class="empty"><div class="ico">📋</div><p>サブタスクがありません</p></div>`;
   } else {
-    const sorted = [...subs].sort((a,b) => new Date(a.deadline||0) - new Date(b.deadline||0));
+    const sorted = [...subs].sort((a,b)=>new Date(a.deadline||0)-new Date(b.deadline||0));
     body.innerHTML = sorted.map(s => {
-      const rc = s.reviewCount || 0;
+      const rc = s.reviewCount||0;
       const now = Date.now();
       const dlBadge = s.dueDate ? (() => {
         const t = new Date(s.dueDate).getTime();
-        if (t <= now) return `<span class="badge expired">復習待ち</span>`;
-        const days = Math.ceil((t - now) / 86400000);
+        if(t<=now) return `<span class="badge expired">復習待ち</span>`;
+        const days = Math.ceil((t-now)/86400000);
         return `<span class="badge ok">${days}日後</span>`;
       })() : '';
-      const repsInfo = rc > 0
-        ? `<span class="tag">EF ${(s.ef||2.5).toFixed(1)} · ${rc}回復習済</span>` : '';
+      const repsInfo = rc>0 ? `<span class="tag">EF ${(s.ef||2.5).toFixed(1)} · ${rc}回復習済</span>` : '';
       return `<div class="sc" style="margin-bottom:8px">
         <div class="sc-head" style="padding:12px 14px">
           <div class="sc-body">
-            <div class="sc-title">${esc(s.title)}</div>
+            <div class="sc-title">${esc(s.title||Object.values(s.fields||{}).filter(Boolean).join(' ')||'')}</div>
             <div class="sc-tags" style="margin-top:4px">${dlBadge}${repsInfo}</div>
           </div>
         </div>
       </div>`;
     }).join('');
   }
-
   document.getElementById('bs-overlay').classList.add('show');
-  requestAnimationFrame(() => document.getElementById('bs1').classList.add('show'));
+  requestAnimationFrame(()=>document.getElementById('bs1').classList.add('show'));
 }
 
 function renderReviewTab(el) {
@@ -2193,38 +2208,34 @@ function renderReviewTab(el) {
     }).join('')}` : '';
 
   // ── 通常SRS復習セクション ──
-  const srsSection = srsParents.length ? `
+  // collect: parent srsActive → show subtasks; subtask srsActive → show sub-subtasks
+  const srsEntries = []; // { displayTitle, parentId, subtaskId(or null), subs[] }
+  P.filter(p => !p._lessonParent).forEach(p => {
+    if (p.srsActive && (p.subtasks||[]).length) {
+      // parent srsActive → subtasks are targets → show parent card
+      srsEntries.push({ displayTitle: p.title, parentId: p.id, subtaskId: null, subs: p.subtasks||[], clr: TC[p.tab]||'var(--ac)', sci: p.sciSubject||'' });
+    }
+    // subtask srsActive → sub-subtasks are targets
+    (p.subtasks||[]).forEach(s => {
+      if (s.srsActive && (s.subtasks||[]).length) {
+        const subLabel = s.title || Object.values(s.fields||{}).filter(Boolean).join(' ') || '';
+        srsEntries.push({ displayTitle: `${p.title}→${subLabel}`, parentId: p.id, subtaskId: s.id, subs: s.subtasks||[], clr: TC[p.tab]||'var(--ac)', sci: p.sciSubject||'' });
+      }
+    });
+  });
+
+  const srsSection = srsEntries.length ? `
     <div style="font-size:13px;font-weight:700;color:var(--td);margin:16px 0 10px">🔁 復習ループ中のタスク</div>
-    ${srsParents.map(p => {
-      const clr = TC[p.tab]||'var(--ac)';
-      const allSubs = [];
-      function walkSubs(subs){subs.forEach(s=>{allSubs.push(s);walkSubs(s.subtasks||[]);});}
-      walkSubs(p.subtasks||[]);
-      const rows = allSubs.length ? allSubs.map(s => {
-        const rc = s.reviewCount||0;
-        const now = Date.now();
-        const dlBadge = s.dueDate ? (() => {
-          const t = new Date(s.dueDate).getTime();
-          if(t<=now) return `<span class="badge expired">復習待ち</span>`;
-          const days = Math.ceil((t-now)/86400000);
-          return `<span class="badge ok">${days}日後</span>`;
-        })() : '';
-        return `<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--bd)">
-          <div style="flex:1;min-width:0">
-            <div style="font-size:13px;font-weight:500">${esc(s.title||s.fields&&Object.values(s.fields).filter(Boolean).join(' ')||'')}</div>
-            <div style="margin-top:3px">${dlBadge}</div>
-          </div>
-          <div style="font-size:11px;font-family:var(--fm);color:var(--td);white-space:nowrap">🔁 ${rc}回</div>
-        </div>`;
-      }).join('') : `<div style="padding:10px 12px;font-size:12px;color:var(--td)">サブタスクなし</div>`;
-      return `<div class="pc" style="margin-bottom:10px;cursor:pointer" onclick="openReviewBS('${p.id}',event)">
+    ${srsEntries.map(entry => {
+      return `<div class="pc" style="margin-bottom:10px;cursor:pointer" onclick="openReviewBSEntry(${JSON.stringify({parentId:entry.parentId,subtaskId:entry.subtaskId||null}).replace(/"/g,"'")},event)">
         <div class="pc-head">
-          <div class="pc-bar" style="background:${clr}"></div>
+          <div class="pc-bar" style="background:${entry.clr}"></div>
           <div class="pc-info">
-            <div class="pc-title">${esc(p.title)}</div>
+            <div class="pc-title">${esc(entry.displayTitle)}</div>
             <div class="pc-meta">
-              ${p.sciSubject?`<span class="tag" style="background:${SC[p.sciSubject]||'#7f849c'}22;color:${SC[p.sciSubject]||'#7f849c'}">${p.sciSubject}</span>`:''}
+              ${entry.sci?`<span class="tag" style="background:${SC[entry.sci]||'#7f849c'}22;color:${SC[entry.sci]||'#7f849c'}">${entry.sci}</span>`:''}
               <span class="srs-badge">🔁 復習中</span>
+              <span class="badge prog">📋 ${entry.subs.length}件</span>
             </div>
           </div>
         </div>
