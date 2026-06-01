@@ -330,16 +330,16 @@ input[type=checkbox]{accent-color:var(--ac);}
       <button class="nt" data-tab="calendar" onclick="sw('calendar')">
         <span class="dot" style="background:var(--td)"></span>📅 カレンダー
       </button>
+      <button class="nt" data-tab="review" onclick="sw('review')">
+        <span class="dot" style="background:var(--cg)"></span>📖 復習
+        <span class="cnt" id="cnt-review">0</span>
+      </button>
       <button class="nt" data-tab="srs" onclick="sw('srs')">
         <span class="dot" style="background:#a6e3a1"></span>🧠 今日の復習
         <span class="cnt" id="cnt-srs" style="background:transparent">0</span>
       </button>
       <div class="nbot">
-        <button class="nt" style="font-size:12px;padding:8px 10px;gap:6px" onclick="openGhModal()">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
-          GitHub同期
-        </button>
-        <div class="syncs" id="syncs">未設定</div>
+
         <button class="nt" style="font-size:12px;padding:8px 10px;gap:6px" onclick="openLessonModal()">
           📖 授業設定
         </button>
@@ -623,11 +623,7 @@ function renderLessonModal(parentId){
       </div>
     </div>
     ` : `<p style="font-size:13px;color:var(--td);margin-bottom:12px">「${esc(p.title)}」の授業日を編集します。タップで選択・解除できます。</p>`}
-    <div class="mf">
-      <label>締め切り時刻</label>
-      <input type="time" id="lesson-time" value="23:59"
-        style="padding:8px 10px;background:var(--sf3);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:16px;outline:none;width:100%">
-    </div>
+
     <div class="flbl" style="margin-bottom:6px">選択済み（${lessonCalState.selected.length}件）</div>
     <div class="lc-selected" id="lc-selected"></div>
     <div class="lc-nav">
@@ -638,11 +634,7 @@ function renderLessonModal(parentId){
     <div class="lc-grid" id="lc-grid"></div>
   `;
 
-  // pre-fill edit data
-  if(isEdit && p){
-    const timeVal = (p.subtasks||[]).find(s=>s._lesson)?.deadline?.slice(11,16) || '23:59';
-    document.getElementById('lesson-time').value = timeVal;
-  }
+
 
   renderLessonCal();
   renderLcSelected();
@@ -702,7 +694,7 @@ function lcNextMonth(){
 }
 
 function saveLessonSetup(){
-  const time = document.getElementById('lesson-time')?.value || '23:59';
+  const time = '07:00'; // 授業翌朝7時固定
   const selected = [...lessonCalState.selected].sort();
   const editId = lessonCalState.editParentId;
 
@@ -760,7 +752,10 @@ function saveLessonSetup(){
 
 function makeLessonSubtask(dt, time){
   const pad=n=>n.toString().padStart(2,'0');
-  const dlStr=`${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}T${time.replace(':',':')}`;
+  // deadline = 授業翌朝07:00固定
+  const nxt=new Date(dt);nxt.setDate(nxt.getDate()+1);nxt.setHours(7,0,0,0);
+  const pad2=n=>n.toString().padStart(2,'0');
+  const dlStr=`${nxt.getFullYear()}-${pad2(nxt.getMonth()+1)}-${pad2(nxt.getDate())}T07:00`;
   return {
     id:gid(),
     title:`${dt.getMonth()+1}/${dt.getDate()}（${DAYS[dt.getDay()]}）の復習`,
@@ -768,7 +763,11 @@ function makeLessonSubtask(dt, time){
     deadline:dlStr,
     totalItems:1,progress:0,done:false,
     subtasks:[],expanded:false,
-    _lesson:true
+    _lesson:true,
+    srsActive:true,
+    reviewCount:0,
+    reps:0,interval:1,ef:2.5,
+    dueDate:nxt.toISOString(),
   };
 }
 
@@ -1596,8 +1595,10 @@ function render(){
   updateCounts();
   const el=document.getElementById('right');
   if(curTab==='calendar'){renderCal(el);return;}
+  if(curTab==='review'){renderReviewTab(el);return;}
   if(curTab==='srs'){renderSRS(el);return;}
-  let parents=curTab==='all'?[...P]:P.filter(p=>p.tab===curTab);
+  // exclude lesson parents from normal tabs
+  let parents=curTab==='all'?P.filter(p=>!p._lessonParent):P.filter(p=>p.tab===curTab&&!p._lessonParent);
   if(curSubject!=='all') parents=parents.filter(p=>p.sciSubject===curSubject);
   // sort
   if(curSort==='deadline'){
@@ -2011,17 +2012,75 @@ function updateTaskSRS(task, rating) {
   return { ...task, reps, ef, interval, dueDate: nextDue.toISOString() };
 }
 
+function getTomorrowSRSTasks() {
+  const tmStart = new Date(); tmStart.setDate(tmStart.getDate()+1); tmStart.setHours(0,0,0,0);
+  const tmEnd   = new Date(); tmEnd.setDate(tmEnd.getDate()+1);     tmEnd.setHours(23,59,59,999);
+  const due = [];
+  P.forEach(p => {
+    if (p.srsActive && p.dueDate) {
+      const d = new Date(p.dueDate);
+      if (d >= tmStart && d <= tmEnd) due.push({ label: p.title, rootId: p.id });
+    }
+    function walk(subs, rootId) {
+      subs.forEach(s => {
+        const eff = s.srsActive || p.srsActive;
+        if (eff && s.dueDate) {
+          const d = new Date(s.dueDate);
+          if (d >= tmStart && d <= tmEnd) {
+            const parentLabel = p.title;
+            const taskLabel = s.title || Object.values(s.fields||{}).filter(Boolean).join(' ') || '';
+            due.push({ label: taskLabel ? `${parentLabel} — ${taskLabel}` : parentLabel, rootId });
+          }
+        }
+        walk(s.subtasks||[], rootId);
+      });
+    }
+    walk(p.subtasks||[], p.id);
+  });
+  return due;
+}
+
+function openTomorrowBS() {
+  const tasks = getTomorrowSRSTasks();
+  const body = document.getElementById('bs1-body');
+  const title = document.getElementById('bs1-title');
+  title.textContent = '📅 明日の復習';
+  document.getElementById('bs1-ex').style.display = 'none';
+  document.getElementById('bs1-add').style.display = 'none';
+  if (!tasks.length) {
+    body.innerHTML = `<div class="empty"><div class="ico">🎉</div><p>明日の復習はありません！</p></div>`;
+  } else {
+    body.innerHTML = `
+      <div style="font-size:12px;color:var(--td);padding:4px 0 12px">${tasks.length}件</div>
+      ${tasks.map(t => `
+        <div style="padding:12px 14px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);margin-bottom:8px;font-size:14px">
+          🔁 ${esc(t.label)}
+        </div>`).join('')}`;
+  }
+  bsStack = [{ parentId: '__tomorrow__', subtaskId: null }];
+  document.getElementById('bs-overlay').classList.add('show');
+  requestAnimationFrame(() => document.getElementById('bs1').classList.add('show'));
+}
+
+function isEffectivelySRS(task, parentP) {
+  // task is SRS if its own srsActive=true OR parent's srsActive=true (dynamic ref)
+  if (task.srsActive) return true;
+  if (parentP && parentP.srsActive) return true;
+  return false;
+}
+
 function getSRSDueTasks() {
   const now = new Date(); now.setHours(23,59,59,999);
   const due = [];
   P.forEach(p => {
-    // check parent itself
+    // parent itself
     if (p.srsActive && p.dueDate && new Date(p.dueDate) <= now) {
       due.push({ task: p, rootId: p.id, isParent: true });
     }
     function walk(subs, rootId) {
       subs.forEach(s => {
-        if (s.srsActive && s.dueDate && new Date(s.dueDate) <= now) {
+        const effectiveSRS = s.srsActive || p.srsActive || false;
+        if (effectiveSRS && s.dueDate && new Date(s.dueDate) <= now) {
           due.push({ task: s, rootId, isParent: false });
         }
         walk(s.subtasks || [], rootId);
@@ -2033,12 +2092,80 @@ function getSRSDueTasks() {
   return due;
 }
 
+function getLessonParents() {
+  return P.filter(p => p._lessonParent);
+}
+
+function renderReviewTab(el) {
+  const lessonParents = getLessonParents();
+  if (!lessonParents.length) {
+    el.innerHTML = `<div class="empty"><div class="ico">📖</div><p>授業設定から授業復習タスクを追加してください。</p></div>`;
+    return;
+  }
+  const cards = lessonParents.map(p => {
+    const subs = (p.subtasks || []).filter(s => s._lesson);
+    const totalReviews = subs.reduce((sum, s) => sum + (s.reviewCount || 0), 0);
+    const doneCount = subs.filter(s => s.done).length;
+    // sort by date
+    const sorted = [...subs].sort((a, b) => new Date(a.deadline) - new Date(b.deadline));
+    const rows = sorted.map(s => {
+      const rc = s.reviewCount || 0;
+      const dlBadge = s.dueDate ? (() => {
+        const now = Date.now();
+        const t = new Date(s.dueDate).getTime();
+        if (t <= now) return `<span class="badge expired">復習待ち</span>`;
+        const days = Math.ceil((t - now) / 86400000);
+        return `<span class="badge ok">${days}日後に復習</span>`;
+      })() : '';
+      return `<div style="display:flex;align-items:center;gap:8px;padding:7px 12px;border-bottom:1px solid var(--bd)">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:500">${esc(s.title)}</div>
+          <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:2px">${dlBadge}</div>
+        </div>
+        <div style="font-size:11px;font-family:var(--fm);color:var(--td);white-space:nowrap;flex-shrink:0">
+          🔁 ${rc}回復習
+        </div>
+      </div>`;
+    }).join('');
+
+    const clr = TC[p.tab] || 'var(--ac)';
+    return `<div class="pc" style="margin-bottom:12px">
+      <div class="pc-head">
+        <div class="pc-bar" style="background:${clr}"></div>
+        <div class="pc-info">
+          <div class="pc-title">${esc(p.title)}</div>
+          <div class="pc-meta">
+            <span class="tag" style="background:rgba(255,255,255,.04)">${p.tab}</span>
+            ${p.sciSubject ? `<span class="tag" style="background:${SC[p.sciSubject]||'#7f849c'}22;color:${SC[p.sciSubject]||'#7f849c'}">${p.sciSubject}</span>` : ''}
+            <span class="badge prog">📋 ${doneCount}/${subs.length}</span>
+            <span class="badge" style="background:rgba(166,227,161,.1);color:var(--ac3)">🔁 累計${totalReviews}回</span>
+          </div>
+        </div>
+      </div>
+      <div>${rows}</div>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `
+  <div>
+    <div style="font-size:16px;font-weight:700;margin-bottom:4px">📖 授業復習</div>
+    <div style="font-size:12px;color:var(--td);margin-bottom:16px">授業ごとの復習状況と履歴</div>
+    ${cards}
+  </div>`;
+}
+
 function renderSRS(el) {
   const due = getSRSDueTasks();
   if (!due.length) {
-    el.innerHTML = `<div class="empty"><div class="ico">🎉</div><p>今日の復習はありません！<br>すべて完了しています。</p></div>`;
+  const tmCountEmpty = getTomorrowSRSTasks().length;
+  const tmBtnEmpty = tmCountEmpty > 0
+    ? `<button onclick="openTomorrowBS()" style="display:inline-flex;align-items:center;gap:6px;background:var(--sf3);border:1px solid var(--bd);border-radius:var(--rs);color:var(--td);font-size:12px;padding:7px 12px;cursor:pointer;margin-top:12px">
+        📅 明日の復習を確認 <span style="background:var(--sf2);border-radius:10px;padding:1px 7px;font-family:var(--fm)">${tmCountEmpty}</span>
+      </button>` : '';
+    el.innerHTML = `<div class="empty"><div class="ico">🎉</div><p>今日の復習はありません！<br>すべて完了しています。</p>${tmBtnEmpty}</div>`;
     return;
   }
+  // Note: lesson tasks are included via getSRSDueTasks since they have srsActive:true and dueDate
   const cards = due.map(({ task, rootId, isParent }) => {
     const p = P.find(x => x.id === (isParent ? task.id : rootId));
     const parentLabel = p ? p.title : '';
@@ -2073,10 +2200,17 @@ function renderSRS(el) {
     </div>`;
   }).join('');
 
+  const tmCount = getTomorrowSRSTasks().length;
+  const tmBtn = tmCount > 0
+    ? `<button onclick="openTomorrowBS()" style="display:flex;align-items:center;gap:6px;background:var(--sf3);border:1px solid var(--bd);border-radius:var(--rs);color:var(--td);font-size:12px;padding:7px 12px;cursor:pointer;margin-bottom:16px">
+        📅 明日の復習を確認 <span style="background:var(--sf2);border-radius:10px;padding:1px 7px;font-family:var(--fm)">${tmCount}</span>
+      </button>`
+    : '';
   el.innerHTML = `
   <div>
     <div style="font-size:16px;font-weight:700;margin-bottom:4px">🧠 今日の復習</div>
-    <div style="font-size:12px;color:var(--td);margin-bottom:16px">${due.length}件 / 復習ループ対象</div>
+    <div style="font-size:12px;color:var(--td);margin-bottom:10px">${due.length}件 / 復習ループ対象</div>
+    ${tmBtn}
     ${cards}
   </div>`;
 }
@@ -2117,14 +2251,17 @@ function submitSRS(rating) {
     const r = P.find(x => x.id === srsTargetRootId);
     if (r) {
       const s = find(srsTargetId, r.subtasks || []);
-      if (s) Object.assign(s, updateTaskSRS(s, rating));
+      if (s) {
+        Object.assign(s, updateTaskSRS(s, rating));
+        s.reviewCount = (s.reviewCount || 0) + 1;
+      }
     }
   }
   saveL();
   closeSRSModal();
-  // re-render SRS view
   const el = document.getElementById('right');
   if (curTab === 'srs') renderSRS(el);
+  else if (curTab === 'review') renderReviewTab(el);
   updateCounts();
 }
 
@@ -2138,6 +2275,8 @@ function updateCounts(){
     srsEl.textContent=srsDue||'';
     srsEl.className=srsDue>0?'cnt cnt-srs-alert':'cnt';
   }
+  const reviewEl=document.getElementById('cnt-review');
+  if(reviewEl) reviewEl.textContent=getLessonParents().length||'';
 }
 
 // ════════════════════════════════
