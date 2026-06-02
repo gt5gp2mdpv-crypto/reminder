@@ -730,7 +730,7 @@ function saveLessonSetup(){
       if(a._lesson) return -1; if(b._lesson) return 1; return 0;
     });
 
-    saveL(); closeLessonModal(); render();
+    saveL(); closeLessonModal(); render(); updateCounts();
     return;
   }
 
@@ -2075,16 +2075,24 @@ function getSRSDueTasks() {
   P.forEach(p => {
     // parent srsActive=true means its direct children are loop targets
     // parent itself is NEVER a review target
+    // skip lesson parents entirely - they show up via lesson path
+    if (p._lessonParent) {
+      // include _lesson subtasks directly if they have dueDate due
+      (p.subtasks||[]).filter(s=>s._lesson).forEach(s=>{
+        if(s.dueDate && new Date(s.dueDate) <= now) {
+          due.push({ task: s, rootId: p.id, isParent: false, isLesson: true });
+        }
+      });
+      return;
+    }
     function walk(subs, rootId, parentSRS) {
       subs.forEach(s => {
-        // this task is a direct target if:
-        //   - its own srsActive=true (its children are targets, not itself)
-        //   - OR parentSRS=true (parent flagged children as targets)
-        const isSelf = parentSRS; // parent said "my children are targets"
+        // skip _lesson tasks in walk
+        if (s._lesson) return;
+        const isSelf = parentSRS;
         if (isSelf && s.dueDate && s.dueDate !== null && new Date(s.dueDate) <= now) {
           due.push({ task: s, rootId, isParent: false });
         }
-        // recurse: s.srsActive=true means s's children are targets
         walk(s.subtasks || [], rootId, s.srsActive || false);
       });
     }
@@ -2135,9 +2143,9 @@ function delReviewSub(subId, parentId, event) {
   }
   removeFromSubs(p.subtasks || []);
   saveL();
-  // re-render BS
+  // re-render BS and counts
   const subs = p._lessonParent ? (p.subtasks||[]).filter(s=>s._lesson) : (p.subtasks||[]);
-  openReviewBSWithSubs(document.getElementById('bs1-title').textContent, subs, parentId, event);
+  openReviewBSWithSubs(document.getElementById('bs1-title').textContent, subs, parentId, null);
   updateCounts(); render();
 }
 
@@ -2278,11 +2286,12 @@ function renderSRS(el) {
     return;
   }
   // Note: lesson tasks are included via getSRSDueTasks since they have srsActive:true and dueDate
-  const cards = due.map(({ task, rootId, isParent }) => {
+  const cards = due.map((item) => {
+    const { task, rootId, isParent } = item;
     const p = P.find(x => x.id === (isParent ? task.id : rootId));
     const parentLabel = p ? p.title : '';
     const taskLabel = isParent ? task.title : (task.title || Object.values(task.fields || {}).filter(Boolean).join(' ') || '');
-    const fieldStr = !isParent ? Object.entries(task.fields || {}).filter(([k,v]) => v)
+    const fieldStr = (!isParent && !item.isLesson) ? Object.entries(task.fields || {}).filter(([k,v]) => v)
       .map(([k,v]) => (FIELD_PREFIX[k]||'') + v).join(' · ') : '';
     const daysOverdue = Math.floor((Date.now() - new Date(task.dueDate)) / 86400000);
     const overdueLabel = daysOverdue > 0 ? `<span class="badge expired">${daysOverdue}日遅れ</span>` :
