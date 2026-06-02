@@ -1797,7 +1797,7 @@ function addSInBS(){
   const fields={};
   formFields.forEach(fid=>{const el=document.getElementById(`ff-${fid}`);if(el&&el.value.trim())fields[fid]=el.value.trim();});
   const srsOn=document.getElementById('sf-srs')?.checked||false;
-  const sub={id:gid(),title,subject,fields,deadline:dl||null,totalItems:tot,progress:0,done:false,subtasks:[],expanded:false,srsActive:srsOn,reps:0,interval:1,ef:2.5,dueDate:new Date().toISOString()};
+  const sub={id:gid(),title,subject,fields,deadline:dl||null,totalItems:tot,progress:0,done:false,subtasks:[],expanded:false,srsActive:srsOn,reps:0,interval:1,ef:2.5,dueDate:null};
   const r=P.find(x=>x.id===rootId);if(!r)return;
   if(parentId===rootId){r.subtasks.push(sub);}
   else{const pn=find(parentId,r.subtasks||[]);if(pn){pn.subtasks=pn.subtasks||[];pn.subtasks.push(sub);}}
@@ -2081,7 +2081,7 @@ function getSRSDueTasks() {
         //   - its own srsActive=true (its children are targets, not itself)
         //   - OR parentSRS=true (parent flagged children as targets)
         const isSelf = parentSRS; // parent said "my children are targets"
-        if (isSelf && s.dueDate && new Date(s.dueDate) <= now) {
+        if (isSelf && s.dueDate && s.dueDate !== null && new Date(s.dueDate) <= now) {
           due.push({ task: s, rootId, isParent: false });
         }
         // recurse: s.srsActive=true means s's children are targets
@@ -2123,6 +2123,24 @@ function openReviewBS(parentId, event) {
   openReviewBSWithSubs(p.title, subs, parentId, event);
 }
 
+function delReviewSub(subId, parentId, event) {
+  event?.stopPropagation();
+  if (!confirm('このサブタスクを削除しますか？')) return;
+  const p = P.find(x => x.id === parentId); if (!p) return;
+  // search and remove from subtasks
+  function removeFromSubs(subs) {
+    const idx = subs.findIndex(s => s.id === subId);
+    if (idx >= 0) { subs.splice(idx, 1); return true; }
+    return subs.some(s => removeFromSubs(s.subtasks || []));
+  }
+  removeFromSubs(p.subtasks || []);
+  saveL();
+  // re-render BS
+  const subs = p._lessonParent ? (p.subtasks||[]).filter(s=>s._lesson) : (p.subtasks||[]);
+  openReviewBSWithSubs(document.getElementById('bs1-title').textContent, subs, parentId, event);
+  updateCounts(); render();
+}
+
 function openReviewBSWithSubs(title, subs, parentId, event) {
   bsStack = [{ parentId, subtaskId: null }];
   document.getElementById('bs1-title').textContent = title;
@@ -2148,6 +2166,9 @@ function openReviewBSWithSubs(title, subs, parentId, event) {
           <div class="sc-body">
             <div class="sc-title">${esc(s.title||Object.values(s.fields||{}).filter(Boolean).join(' ')||'')}</div>
             <div class="sc-tags" style="margin-top:4px">${dlBadge}${repsInfo}</div>
+          </div>
+          <div class="sc-acts">
+            <button class="act del" onclick="delReviewSub('${s.id}','${parentId}',event)">🗑</button>
           </div>
         </div>
       </div>`;
@@ -2570,7 +2591,10 @@ function findSiblings(id, arr){
 function togDone(id,rootId){
   const r=P.find(x=>x.id===rootId);if(!r)return;
   const s=find(id,r.subtasks||[]);if(!s)return;
-  s.done=!s.done;saveL();
+  s.done=!s.done;
+  // set SRS dueDate on first completion
+  if(s.done) setSRSDueDateOnComplete(s, r);
+  saveL();
   // refresh parent card badge and BS
   setTimeout(()=>{updateDeadlineBadgesOnly();refreshActiveBS();},80);
   const chk=document.querySelector(`#card-${id} .chk`);
@@ -2586,6 +2610,21 @@ function togDone(id,rootId){
   clearTimeout(saveL._nt);
   saveL._nt=setTimeout(()=>{scheduleAllNotifications();},300);
 }
+
+function setSRSDueDateOnComplete(task, parentP) {
+  // Only set dueDate if this task is an SRS target (parent's srsActive=true)
+  // and dueDate hasn't been initialized yet (still at creation time)
+  const isTarget = parentP?.srsActive || false;
+  if (!isTarget) return;
+  // Set dueDate to tomorrow 7am
+  const nxt = new Date();
+  nxt.setDate(nxt.getDate() + 1);
+  nxt.setHours(7, 0, 0, 0);
+  task.dueDate = nxt.toISOString();
+  if (!task.reps) task.reps = 0;
+  if (!task.interval) task.interval = 1;
+  if (!task.ef) task.ef = 2.5;
+}
 function updProg(id,rootId,val){
   const r=P.find(x=>x.id===rootId);if(!r)return;
   const s=find(id,r.subtasks||[]);
@@ -2598,6 +2637,8 @@ function updProg(id,rootId,val){
   // auto-check when slider reaches 100%
   if(s.progress>=s.totalItems&&!s.done){
     s.done=true;
+    const r2=P.find(x=>x.id===rootId);
+    if(r2) setSRSDueDateOnComplete(s, r2);
     const chk=document.querySelector(`#card-${id} .chk`);
     const ttl=document.querySelector(`#card-${id} .sc-title`);
     const card=document.getElementById(`card-${id}`);
@@ -2749,7 +2790,7 @@ function addP(){
     title:t,subject:document.getElementById('pf-sub')?.value.trim()||'',
     sciSubject:document.getElementById('pf-sci')?.value||'',
     repeat:getRepeatConfig(),
-    subtasks:[],expanded:false,srsActive:srsOnP,reps:0,interval:1,ef:2.5,dueDate:new Date().toISOString()};
+    subtasks:[],expanded:false,srsActive:srsOnP,reps:0,interval:1,ef:2.5,dueDate:null};
   P.push(p);
   if(p.repeat?.enabled)generateRepeatSubtasks(p);
   saveL();closeForm();render();
@@ -2904,7 +2945,7 @@ function addS(){
   const fields={};
   formFields.forEach(fid=>{const el=document.getElementById(`ff-${fid}`);if(el&&el.value.trim())fields[fid]=el.value.trim();});
   const srsOn=document.getElementById('sf-srs')?.checked||false;
-  const sub={id:gid(),title,subject,fields,deadline:dl||null,totalItems:tot,progress:0,done:false,subtasks:[],expanded:false,srsActive:srsOn,reps:0,interval:1,ef:2.5,dueDate:new Date().toISOString()};
+  const sub={id:gid(),title,subject,fields,deadline:dl||null,totalItems:tot,progress:0,done:false,subtasks:[],expanded:false,srsActive:srsOn,reps:0,interval:1,ef:2.5,dueDate:null};
   const r=P.find(x=>x.id===rootId);if(!r)return;
   if(parentId===rootId){r.subtasks.push(sub);}
   else{const pn=find(parentId,r.subtasks||[]);if(pn){pn.subtasks=pn.subtasks||[];pn.subtasks.push(sub);}}
@@ -3257,7 +3298,9 @@ function calF(tab,btn){
 function calTogDone(id,rootId,el){
   const r=P.find(x=>x.id===rootId);if(!r)return;
   const s=find(id,r.subtasks||[]);if(!s)return;
-  s.done=!s.done;saveL();
+  s.done=!s.done;
+  if(s.done) setSRSDueDateOnComplete(s, r);
+  saveL();
   el.classList.toggle('on',s.done);
   const title=document.getElementById(`caltitle-${id}`);
   if(title)title.classList.toggle('done',s.done);
