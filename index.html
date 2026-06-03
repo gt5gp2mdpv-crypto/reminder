@@ -137,8 +137,7 @@ h1{font-family:var(--fd);font-size:22px;color:var(--ac);}
 .add-s-btn:hover,.add-s-btn:active{border-color:var(--ac);color:var(--ac);}
 .ex-jump-btn{background:none;border:none;color:var(--exp);font-size:14px;cursor:pointer;padding:2px 6px;border-radius:4px;transition:all .12s;flex-shrink:0;}
 .ex-jump-btn:hover,.ex-jump-btn:active{background:rgba(243,139,168,.12);}
-.ex-jump-btn{background:none;border:none;color:var(--exp);font-size:14px;cursor:pointer;padding:2px 6px;border-radius:4px;transition:all .12s;flex-shrink:0;}
-.ex-jump-btn:hover,.ex-jump-btn:active{background:rgba(243,139,168,.12);}
+
 
 /* ══ SUBTASK AREA ══ */
 .sub-area{padding:0 8px 6px;max-height:480px;overflow-y:auto;scroll-behavior:smooth;}
@@ -561,6 +560,7 @@ const FIELD_PREFIX={page:'pp.',sec:'§',prob:'No.',date:''};
 
 let P=[], curTab='all', ghCfg=null;
 let formTarget=null, emTarget=null;
+let _saveLTimer=null;
 let curSubject='all', curSort='subject'; // 'default'|'deadline'|'subject'
 // selectedFields for current open form
 let formFields=new Set();
@@ -1196,13 +1196,7 @@ async function init(){
   try{
     db=await openDB();
     const saved=await idbGet('tasks');
-    if(saved)P=saved;
-    else{
-      // migrate from localStorage if exists
-      const old=localStorage.getItem('sf4');
-      if(old){P=JSON.parse(old);await idbSet('tasks',P);}
-    }
-    const g=await idbGet('ghcfg');
+    if(saved)P=saved;    const g=await idbGet('ghcfg');
     if(g){ghCfg=g;ust(`@${ghCfg.user}`);}
   }catch(e){
     // fallback to localStorage
@@ -1221,10 +1215,10 @@ async function init(){
 }
 async function saveL(){
   try{await idbSet('tasks',P);}
-  catch(e){localStorage.setItem('sf4',JSON.stringify(P));}
+  catch(e){console.error('[saveL] IndexedDB write failed:',e);}
   schedGh();
 }
-function ust(t){document.getElementById('syncs').textContent=t;}
+function ust(t){const el=document.getElementById('syncs');if(el)el.textContent=t;}
 function updateClock(){const n=new Date();document.getElementById('clock').textContent=n.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'});}
 function updateDeadlineBadgesOnly(){
   if(formTarget)return;
@@ -1240,13 +1234,7 @@ function updateDeadlineBadgesOnly(){
     sumEl.innerHTML=pb+badges;
     const card=document.getElementById(`pc-${p.id}`);
     if(card)card.classList.toggle('xp-border',(s||{}).ex>0);
-    // also update strip toggle label
-    const stripTog=document.querySelector(`#pc-${p.id} .tog`);
-    if(stripTog){
-      const cnt=(p.subtasks||[]).length;
-      const togText=stripTog.innerHTML.replace(/タスク \(\d+\)/,`タスク (${cnt})`);
-      stripTog.innerHTML=togText;
-    }
+
   });
 }
 
@@ -1499,46 +1487,6 @@ function doScrollToOldestExpired(parentId){
 
 function p_from_id(id){return P.find(x=>x.id===id);}
 
-function jumpToExpired(parentId, event){
-  event?.stopPropagation();
-  // ensure parent is open first
-  const p=P.find(x=>x.id===parentId);
-  if(!p) return;
-  if(!p.expanded){
-    togP(parentId);
-    setTimeout(()=>doScrollToOldestExpired(parentId), 350);
-  } else {
-    doScrollToOldestExpired(parentId);
-  }
-}
-
-function doScrollToOldestExpired(parentId){
-  const saId=`sa-${parentId}`;
-  const container=document.getElementById(saId);
-  if(!container) return;
-  const now=Date.now();
-  // find oldest expired undone subtask
-  const p=P.find(x=>x.id===parentId);
-  if(!p) return;
-  let oldest=null, oldestTime=Infinity;
-  function walk(subs){
-    subs.forEach(s=>{
-      if(s.deadline&&!s.done){
-        const t=new Date(s.deadline).getTime();
-        if(t<now&&t<oldestTime){oldestTime=t;oldest=s;}
-      }
-      walk(s.subtasks||[]);
-    });
-  }
-  walk(p.subtasks||[]);
-  if(!oldest) return;
-  const cardEl=document.getElementById(`card-${oldest.id}`);
-  if(!cardEl) return;
-  const containerRect=container.getBoundingClientRect();
-  const cardRect=cardEl.getBoundingClientRect();
-  const offset=container.scrollTop+(cardRect.top-containerRect.top)-4;
-  container.scrollTo({top:Math.max(0,offset),behavior:'smooth'});
-}
 
 function scrollToOldestExpired(saId, event){
   event?.stopPropagation();
@@ -2087,11 +2035,13 @@ function getSRSDueTasks() {
     }
     function walk(subs, rootId, parentSRS) {
       subs.forEach(s => {
-        // skip _lesson tasks in walk
         if (s._lesson) return;
         const isSelf = parentSRS;
         if (isSelf && s.dueDate && s.dueDate !== null && new Date(s.dueDate) <= now) {
-          due.push({ task: s, rootId, isParent: false });
+          // Only show if completed at least once (reps>0 or reviewCount>0)
+          if ((s.reps||0) > 0 || (s.reviewCount||0) > 0) {
+            due.push({ task: s, rootId, isParent: false });
+          }
         }
         walk(s.subtasks || [], rootId, s.srsActive || false);
       });
@@ -2616,23 +2566,34 @@ function togDone(id,rootId){
   if(card)card.classList.toggle('done-c',s.done);
   if(!formTarget)updateDeadlineBadgesOnly();
   // immediately reschedule so server gets updated (done task removed from schedule)
-  clearTimeout(saveL._nt);
-  saveL._nt=setTimeout(()=>{scheduleAllNotifications();},300);
+  clearTimeout(_saveLTimer);
+  _saveLTimer=setTimeout(()=>{scheduleAllNotifications();},300);
 }
 
-function setSRSDueDateOnComplete(task, parentP) {
-  // Only set dueDate if this task is an SRS target (parent's srsActive=true)
-  // and dueDate hasn't been initialized yet (still at creation time)
-  const isTarget = parentP?.srsActive || false;
-  if (!isTarget) return;
-  // Set dueDate to tomorrow 7am
+function setSRSDueDateOnComplete(task, rootP) {
+  // Find the immediate parent of task within rootP
+  let immediateParent = null;
+  if ((rootP.subtasks||[]).some(c => c.id === task.id)) {
+    immediateParent = rootP;
+  } else {
+    function findParent(subs) {
+      for (const s of subs) {
+        if ((s.subtasks||[]).some(c => c.id === task.id)) { immediateParent = s; return true; }
+        if (findParent(s.subtasks||[])) return true;
+      }
+      return false;
+    }
+    findParent(rootP.subtasks||[]);
+  }
+  // Only set dueDate if immediate parent has srsActive=true
+  if (!immediateParent?.srsActive) return;
   const nxt = new Date();
   nxt.setDate(nxt.getDate() + 1);
   nxt.setHours(7, 0, 0, 0);
   task.dueDate = nxt.toISOString();
-  if (!task.reps) task.reps = 0;
-  if (!task.interval) task.interval = 1;
-  if (!task.ef) task.ef = 2.5;
+  if (task.reps == null) task.reps = 0;
+  if (task.interval == null) task.interval = 1;
+  if (task.ef == null) task.ef = 2.5;
 }
 function updProg(id,rootId,val){
   const r=P.find(x=>x.id===rootId);if(!r)return;
@@ -3098,10 +3059,14 @@ function commitEM(){
       const wasSubSRS=s.srsActive;
       s.srsActive=document.getElementById('em-srs-sub')?.checked||false;
       if(s.srsActive&&!wasSubSRS){
-        // initialize SRS fields for sub-subtasks on first enable
-        (s.subtasks||[]).forEach(c=>{
-          if(!c.dueDate){c.reps=0;c.interval=1;c.ef=2.5;c.dueDate=new Date().toISOString();}
-        });
+        // reset dueDate to null for undone sub-subtasks (wait for completion)
+        function resetUndone(subs){
+          subs.forEach(c=>{
+            if(!c.done){c.reps=0;c.interval=1;c.ef=2.5;c.dueDate=null;}
+            resetUndone(c.subtasks||[]);
+          });
+        }
+        resetUndone(s.subtasks||[]);
       }
       s.deadline=document.getElementById('em-dl').value||null;
       s.totalItems=Math.max(1,parseInt(document.getElementById('em-tot').value)||1);
@@ -3315,8 +3280,8 @@ function calTogDone(id,rootId,el){
   if(title)title.classList.toggle('done',s.done);
   const card=el.closest('.cev');
   if(card)card.classList.toggle('xp',new Date(s.deadline)<Date.now()&&!s.done);
-  clearTimeout(saveL._nt);
-  saveL._nt=setTimeout(()=>{scheduleAllNotifications();},300);
+  clearTimeout(_saveLTimer);
+  _saveLTimer=setTimeout(()=>{scheduleAllNotifications();},300);
 }
 
 function calUpdProg(id,rootId,val,sliderEl){
