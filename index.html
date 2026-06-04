@@ -264,6 +264,59 @@ h1{font-family:var(--fd);font-size:22px;color:var(--ac);}
 .empty .ico{font-size:32px;margin-bottom:10px;opacity:.4;}
 .empty p{font-size:12px;}
 input[type=checkbox]{accent-color:var(--ac);}
+.vocab-modal{position:fixed;inset:0;background:var(--bg);z-index:400;display:flex;flex-direction:column;overflow:hidden;}
+.vocab-modal.hidden{display:none;}
+.vocab-header{display:flex;align-items:center;gap:8px;padding:14px 16px 10px;border-bottom:1px solid var(--bd);flex-shrink:0;}
+.vocab-header h2{flex:1;font-size:16px;margin:0;}
+.vocab-close{background:none;border:none;color:var(--td);font-size:22px;cursor:pointer;padding:2px 8px;}
+.vocab-tabs{display:flex;gap:0;border-bottom:1px solid var(--bd);flex-shrink:0;}
+.vocab-tab{flex:1;padding:10px;background:none;border:none;color:var(--td);font-size:13px;cursor:pointer;border-bottom:2px solid transparent;}
+.vocab-tab.active{color:var(--ac);border-bottom-color:var(--ac);}
+.vocab-body{flex:1;overflow-y:auto;padding:12px 14px 80px;-webkit-overflow-scrolling:touch;}
+.vocab-search-row{display:flex;gap:8px;margin-bottom:12px;}
+.vocab-search-row input{flex:1;padding:9px 12px;background:var(--sf3);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:16px;outline:none;}
+.vocab-filter-row{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;}
+.vchip{padding:5px 12px;border-radius:20px;border:1px solid var(--bd);background:none;color:var(--td);font-size:12px;cursor:pointer;}
+.vchip.active{background:var(--ac);border-color:var(--ac);color:white;}
+.vocab-fab{position:fixed;bottom:24px;right:20px;width:52px;height:52px;border-radius:50%;background:var(--ac);border:none;color:white;font-size:24px;cursor:pointer;z-index:401;box-shadow:0 4px 12px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;}
+/* card flip */
+.vcard-wrap{perspective:800px;margin-bottom:10px;}
+.vcard{background:var(--sf);border:1px solid var(--bd);border-radius:var(--rs);padding:14px 16px;cursor:pointer;transition:box-shadow .15s;}
+.vcard:active{box-shadow:0 0 0 2px var(--ac);}
+.vcard-front{display:flex;justify-content:space-between;align-items:flex-start;}
+.vcard-word{font-size:17px;font-weight:700;flex:1;}
+.vcard-score{font-size:10px;font-family:var(--fm);color:var(--td);margin-left:8px;flex-shrink:0;}
+.vcard-type{font-size:10px;padding:2px 7px;border-radius:10px;background:var(--sf3);color:var(--td);margin-top:2px;}
+.vcard-back{display:none;margin-top:10px;border-top:1px solid var(--bd);padding-top:10px;}
+.vcard.flipped .vcard-back{display:block;}
+.vcard-meaning{display:flex;align-items:flex-start;gap:6px;margin-bottom:4px;font-size:13px;}
+.pos-badge{font-size:10px;font-family:var(--fm);padding:1px 6px;border-radius:8px;flex-shrink:0;margin-top:2px;}
+.pos-名詞{background:rgba(137,180,250,.2);color:#89b4fa;}
+.pos-動詞{background:rgba(166,227,161,.2);color:#a6e3a1;}
+.pos-形容詞{background:rgba(249,226,175,.2);color:#f9e2af;}
+.pos-副詞{background:rgba(203,166,247,.2);color:#cba6f7;}
+.pos-接続詞{background:rgba(148,226,213,.2);color:#94e2d5;}
+.pos-連語{background:rgba(243,139,168,.2);color:#f38ba8;}
+.pos-その他{background:var(--sf3);color:var(--td);}
+.vcard-acts{display:flex;gap:8px;margin-top:10px;justify-content:flex-end;}
+/* vocab form */
+.vform-modal{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:500;display:flex;align-items:flex-end;justify-content:center;}
+.vform-modal.hidden{display:none;}
+.vform-inner{background:var(--sf);border-radius:16px 16px 0 0;padding:20px 18px 36px;width:100%;max-height:85vh;overflow-y:auto;-webkit-overflow-scrolling:touch;}
+.vform-inner h3{margin:0 0 14px;font-size:15px;}
+.meaning-row{display:flex;gap:6px;margin-bottom:8px;align-items:flex-start;}
+.meaning-row input{flex:1;padding:9px 10px;background:var(--sf3);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:16px;outline:none;}
+.meaning-row select{padding:9px 6px;background:var(--sf3);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px;outline:none;}
+.meaning-row button{background:none;border:none;color:var(--td);font-size:18px;cursor:pointer;padding:6px;}
+/* test screen */
+.vtest-card{background:var(--sf);border:1px solid var(--bd);border-radius:var(--rs);padding:20px;margin-bottom:16px;text-align:center;}
+.vtest-word{font-size:22px;font-weight:700;margin-bottom:8px;}
+.vtest-back{display:none;margin-top:14px;border-top:1px solid var(--bd);padding-top:14px;}
+.vtest-card.revealed .vtest-back{display:block;}
+.vtest-btns{display:flex;gap:10px;margin-top:14px;}
+.vtest-btns button{flex:1;padding:12px;border-radius:var(--rs);border:none;font-size:14px;font-weight:600;cursor:pointer;}
+.btn-know{background:rgba(166,227,161,.2);color:#a6e3a1;border:1px solid #a6e3a1 !important;}
+.btn-forget{background:rgba(243,139,168,.2);color:#f38ba8;border:1px solid #f38ba8 !important;}
 .srs-badge{font-size:10px;font-family:var(--fm);padding:1px 6px;border-radius:10px;background:rgba(166,227,161,.15);color:var(--ac3);margin-left:4px;}
 .cnt-srs-alert{background:rgba(243,139,168,.25)!important;color:var(--exp)!important;}
 .lc-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:12px;}
@@ -339,6 +392,9 @@ input[type=checkbox]{accent-color:var(--ac);}
       </button>
       <div class="nbot">
 
+        <button class="nt" style="font-size:12px;padding:8px 10px;gap:6px" onclick="openVocabModal()">
+          📚 単語帳
+        </button>
         <button class="nt" style="font-size:12px;padding:8px 10px;gap:6px" onclick="openLessonModal()">
           📖 授業設定
         </button>
@@ -1093,6 +1149,21 @@ function scheduleAllNotifications(){
     });
   }
 
+  // ④ SRS review notification (今日の復習)
+  if(notifSettings.dailyEnabled&&notifSettings.dailyTimes.length){
+    notifSettings.dailyTimes.forEach(timeStr=>{
+      const [hh,mm]=timeStr.split(':').map(Number);
+      const dt=new Date();dt.setHours(hh,mm,0,0);
+      if(dt.getTime()>now){
+        const srsDue=getSRSDueTasks();
+        if(srsDue.length>0){
+          msgs.push({time:dt.getTime(),title:'🧠 今日の復習',
+            body:`${srsDue.length}件の復習があります`});
+        }
+      }
+    });
+  }
+
   // deduplicate msgs by exact time+title+body key
   const seen=new Set();
   const dedupedMsgs=msgs.filter(m=>{
@@ -1163,10 +1234,11 @@ function importJSON(e){
 let db=null;
 function openDB(){
   return new Promise((res,rej)=>{
-    const req=indexedDB.open('studyflow',1);
+    const req=indexedDB.open('studyflow',2);
     req.onupgradeneeded=e=>{
       const d=e.target.result;
       if(!d.objectStoreNames.contains('kv'))d.createObjectStore('kv');
+      if(!d.objectStoreNames.contains('words'))d.createObjectStore('words');
     };
     req.onsuccess=e=>{res(e.target.result);};
     req.onerror=e=>{rej(e);};
@@ -1202,6 +1274,7 @@ async function init(){
     // fallback to localStorage
     try{const d=localStorage.getItem('sf4');if(d)P=JSON.parse(d);}catch(e2){}
   }
+  await loadWords();
   render();
   setInterval(()=>{updateClock();updateDeadlineBadgesOnly();},30000);
   updateClock();
@@ -1930,6 +2003,276 @@ function refreshActiveBS(){
 }
 
 // ════════════════════════════════
+//  VOCABULARY (単語帳)
+// ════════════════════════════════
+let WORDS = []; // loaded from IDB
+let vocabTab = 'list';
+let vocabFilter = 'all'; // 'all'|'english'|'classical'
+let vocabSearch = '';
+let vocabFormType = 'english';
+let vocabEditId = null;
+let vocabTestQueue = [];
+let vocabTestIdx = 0;
+
+const POS_LIST = ['名詞','動詞','形容詞','副詞','接続詞','連語','その他'];
+
+// IDB helpers for words
+async function loadWords(){
+  try{
+    const w=await idbGet('words');
+    if(w)WORDS=w; else WORDS=[];
+  }catch(e){WORDS=[];}
+}
+async function saveWords(){
+  try{await idbSet('words',WORDS);}
+  catch(e){console.error('[saveWords]',e);}
+}
+
+function gidV(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
+
+function openVocabModal(){
+  document.getElementById('vocab-modal').classList.remove('hidden');
+  closeNav();
+  renderVocabBody();
+}
+function closeVocabModal(){
+  document.getElementById('vocab-modal').classList.add('hidden');
+}
+function switchVocabTab(tab){
+  vocabTab=tab;
+  document.getElementById('vtab-list').classList.toggle('active',tab==='list');
+  document.getElementById('vtab-test').classList.toggle('active',tab==='test');
+  document.getElementById('vocab-fab').style.display=tab==='list'?'flex':'none';
+  renderVocabBody();
+}
+
+function getVocabTestWords(){
+  const today=new Date().toISOString().slice(0,10);
+  return WORDS.filter(w=>{
+    if(!w.lastTestedAt){return true;} // never tested
+    const todayCreated=w.createdAt&&w.createdAt.slice(0,10)===today;
+    if(todayCreated)return true;
+    if(w.score<=1.3)return true;
+    const days=Math.floor((Date.now()-new Date(w.lastTestedAt).getTime())/86400000);
+    const thresh={1.4:2,1.5:4,1.6:8,1.7:15,1.8:30,1.9:60,2.0:120};
+    const key=Math.round(w.score*10)/10;
+    return days>=(thresh[key]||999);
+  });
+}
+
+function renderVocabBody(){
+  const el=document.getElementById('vocab-body');
+  if(vocabTab==='list') renderVocabList(el);
+  else renderVocabTest(el);
+}
+
+function renderVocabList(el){
+  let words=[...WORDS];
+  if(vocabFilter!=='all') words=words.filter(w=>w.type===vocabFilter);
+  if(vocabSearch) words=words.filter(w=>
+    w.word.toLowerCase().includes(vocabSearch.toLowerCase())||
+    (w.meanings||[]).some(m=>m.text.includes(vocabSearch))
+  );
+  words.sort((a,b)=>a.score-b.score);
+
+  const testCount=getVocabTestWords().length;
+  el.innerHTML=`
+  <div class="vocab-search-row">
+    <input type="search" placeholder="単語・意味を検索..." value="${esc(vocabSearch)}"
+      oninput="vocabSearch=this.value;renderVocabBody()" style="font-size:16px">
+  </div>
+  <div class="vocab-filter-row">
+    <button class="vchip${vocabFilter==='all'?' active':''}" onclick="setVocabFilter('all')">すべて (${WORDS.length})</button>
+    <button class="vchip${vocabFilter==='english'?' active':''}" onclick="setVocabFilter('english')">英語</button>
+    <button class="vchip${vocabFilter==='classical'?' active':''}" onclick="setVocabFilter('classical')">古文</button>
+    ${testCount>0?`<button class="vchip" style="background:rgba(166,227,161,.15);color:#a6e3a1;border-color:#a6e3a1" onclick="switchVocabTab('test')">📝 復習 ${testCount}件</button>`:''}
+  </div>
+  ${words.length===0?'<div class="empty"><div class="ico">📚</div><p>単語がありません<br>＋ボタンで追加してください</p></div>':
+    words.map(w=>renderVocabCard(w)).join('')}`;
+}
+
+function renderVocabCard(w){
+  const bar=Math.round((w.score-0.1)/1.9*100);
+  const barColor=w.score<=1.3?'var(--exp)':w.score<=1.6?'var(--wrn)':'var(--ac3)';
+  return`<div class="vcard-wrap">
+    <div class="vcard" id="vc-${w.id}" onclick="flipVocabCard('${w.id}')">
+      <div class="vcard-front">
+        <div>
+          <div class="vcard-word">${esc(w.word)}</div>
+          <span class="vcard-type">${w.type==='english'?'英語':'古文'}</span>
+          <div style="margin-top:5px;height:3px;border-radius:2px;background:var(--sf3);width:80px">
+            <div style="height:100%;width:${bar}%;background:${barColor};border-radius:2px;transition:width .3s"></div>
+          </div>
+        </div>
+        <div class="vcard-score">★${w.score.toFixed(1)}</div>
+      </div>
+      <div class="vcard-back">
+        ${(w.meanings||[]).map(m=>`<div class="vcard-meaning">
+          <span class="pos-badge pos-${m.pos||'その他'}">${m.pos||'その他'}</span>
+          <span>${esc(m.text)}</span>
+        </div>`).join('')}
+        <div class="vcard-acts" onclick="event.stopPropagation()">
+          <button class="act" onclick="openVocabForm('${w.id}')">✏️</button>
+          <button class="act del" onclick="deleteVocabWord('${w.id}')">🗑</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function flipVocabCard(id){
+  document.getElementById('vc-'+id)?.classList.toggle('flipped');
+}
+
+function setVocabFilter(f){
+  vocabFilter=f; renderVocabBody();
+}
+
+function renderVocabTest(el){
+  if(vocabTestQueue.length===0||vocabTestIdx===0){
+    vocabTestQueue=getVocabTestWords();
+    vocabTestIdx=0;
+    // shuffle
+    for(let i=vocabTestQueue.length-1;i>0;i--){
+      const j=Math.floor(Math.random()*(i+1));
+      [vocabTestQueue[i],vocabTestQueue[j]]=[vocabTestQueue[j],vocabTestQueue[i]];
+    }
+  }
+  if(vocabTestQueue.length===0){
+    el.innerHTML=`<div class="empty"><div class="ico">🎉</div><p>今日の復習単語はありません！</p></div>`;
+    return;
+  }
+  const remaining=vocabTestQueue.length-vocabTestIdx;
+  if(remaining<=0){
+    el.innerHTML=`<div class="empty"><div class="ico">✅</div><p>テスト完了！<br>${vocabTestQueue.length}件復習しました</p>
+      <button class="bok" style="margin-top:16px" onclick="vocabTestIdx=0;renderVocabBody()">もう一度</button></div>`;
+    return;
+  }
+  const w=vocabTestQueue[vocabTestIdx];
+  if(!w){vocabTestIdx=0;renderVocabBody();return;}
+  el.innerHTML=`
+  <div style="font-size:12px;color:var(--td);margin-bottom:12px">${vocabTestIdx+1} / ${vocabTestQueue.length}</div>
+  <div class="vtest-card" id="vtest-card" onclick="revealVocabCard()">
+    <div class="vtest-word">${esc(w.word)}</div>
+    <div style="font-size:12px;color:var(--td)">${w.type==='english'?'英語':'古文'} · ★${w.score.toFixed(1)}</div>
+    <div style="font-size:11px;color:var(--td);margin-top:8px">タップして意味を確認</div>
+    <div class="vtest-back">
+      ${(w.meanings||[]).map(m=>`<div class="vcard-meaning" style="justify-content:center">
+        <span class="pos-badge pos-${m.pos||'その他'}">${m.pos||'その他'}</span>
+        <span style="font-size:14px">${esc(m.text)}</span>
+      </div>`).join('')}
+      <div class="vtest-btns">
+        <button class="btn-forget" onclick="submitVocabTest(false,event)">😓 わからなかった</button>
+        <button class="btn-know" onclick="submitVocabTest(true,event)">😊 わかった</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function revealVocabCard(){
+  document.getElementById('vtest-card')?.classList.add('revealed');
+}
+
+function submitVocabTest(knew, event){
+  event?.stopPropagation();
+  const w=vocabTestQueue[vocabTestIdx];
+  if(!w)return;
+  const today=new Date().toISOString().slice(0,10);
+  if(w.lastTestedAt!==today){
+    const wObj=WORDS.find(x=>x.id===w.id);
+    if(wObj){
+      if(knew){wObj.score=Math.min(2.0,Math.round((wObj.score+0.1)*10)/10);}
+      else{wObj.score=1.0;}
+      wObj.lastTestedAt=today;
+      // sync back to queue
+      w.score=wObj.score; w.lastTestedAt=wObj.lastTestedAt;
+    }
+    saveWords();
+  }
+  vocabTestIdx++;
+  renderVocabBody();
+}
+
+// ── Vocab Form ──
+function openVocabForm(id=null){
+  vocabEditId=id;
+  document.getElementById('vform-title').textContent=id?'単語を編集':'単語を追加';
+  let word='', type='english', meanings=[{text:'',pos:'名詞'}];
+  if(id){
+    const w=WORDS.find(x=>x.id===id);
+    if(w){word=w.word;type=w.type;meanings=w.meanings.length?[...w.meanings]:[{text:'',pos:'名詞'}];}
+  }
+  vocabFormType=type;
+  document.getElementById('vf-word').value=word;
+  document.getElementById('vf-eng').classList.toggle('active',type==='english');
+  document.getElementById('vf-cls').classList.toggle('active',type==='classical');
+  renderMeaningRows(meanings);
+  document.getElementById('vform-modal').classList.remove('hidden');
+  setTimeout(()=>document.getElementById('vf-word').focus(),100);
+}
+function closeVocabForm(){
+  document.getElementById('vform-modal').classList.add('hidden');
+  vocabEditId=null;
+}
+function setVocabType(t, event){
+  event?.stopPropagation();
+  vocabFormType=t;
+  document.getElementById('vf-eng').classList.toggle('active',t==='english');
+  document.getElementById('vf-cls').classList.toggle('active',t==='classical');
+}
+function renderMeaningRows(meanings){
+  const el=document.getElementById('vf-meanings');
+  el.innerHTML=meanings.map((m,i)=>`
+    <div class="meaning-row" id="mr-${i}">
+      <input type="text" value="${esc(m.text)}" placeholder="意味を入力" style="font-size:16px">
+      <select>${POS_LIST.map(p=>`<option${p===m.pos?' selected':''}>${p}</option>`).join('')}</select>
+      <button onclick="removeMeaningRow(${i})">✕</button>
+    </div>`).join('');
+}
+function addMeaningRow(){
+  const rows=[...document.querySelectorAll('#vf-meanings .meaning-row')];
+  const meanings=rows.map(r=>({
+    text:r.querySelector('input').value,
+    pos:r.querySelector('select').value
+  }));
+  meanings.push({text:'',pos:'名詞'});
+  renderMeaningRows(meanings);
+}
+function removeMeaningRow(i){
+  const rows=[...document.querySelectorAll('#vf-meanings .meaning-row')];
+  const meanings=rows.map(r=>({text:r.querySelector('input').value,pos:r.querySelector('select').value}));
+  if(meanings.length<=1)return;
+  meanings.splice(i,1);
+  renderMeaningRows(meanings);
+}
+function saveVocabWord(){
+  const word=document.getElementById('vf-word').value.trim();
+  if(!word){document.getElementById('vf-word').focus();return;}
+  const rows=[...document.querySelectorAll('#vf-meanings .meaning-row')];
+  const meanings=rows.map(r=>({
+    text:r.querySelector('input').value.trim(),
+    pos:r.querySelector('select').value
+  })).filter(m=>m.text);
+  if(!meanings.length){alert('意味を入力してください');return;}
+  if(vocabEditId){
+    const w=WORDS.find(x=>x.id===vocabEditId);
+    if(w){w.word=word;w.type=vocabFormType;w.meanings=meanings;}
+  } else {
+    WORDS.push({id:gidV(),word,type:vocabFormType,createdAt:new Date().toISOString(),
+      lastTestedAt:null,score:1.0,meanings});
+  }
+  saveWords();
+  closeVocabForm();
+  renderVocabBody();
+}
+function deleteVocabWord(id){
+  if(!confirm('この単語を削除しますか？'))return;
+  WORDS=WORDS.filter(w=>w.id!==id);
+  saveWords();
+  renderVocabBody();
+}
+
+// ════════════════════════════════
 //  SRS (間隔反復)
 // ════════════════════════════════
 let srsTargetId = null;
@@ -2221,7 +2564,16 @@ function renderReviewTab(el) {
       </div>`;
     }).join('')}` : '';
 
-  el.innerHTML = `<div>${lessonSection}${srsSection}</div>`;
+  const tmCount = getTomorrowSRSTasks().length;
+  const tmBtn = tmCount > 0
+    ? `<div style="margin-top:16px">
+        <button onclick="openTomorrowBS()" style="display:flex;align-items:center;gap:6px;background:var(--sf3);border:1px solid var(--bd);border-radius:var(--rs);color:var(--td);font-size:12px;padding:9px 14px;cursor:pointer;width:100%">
+          📅 明日の復習を確認
+          <span style="margin-left:auto;background:var(--sf2);border-radius:10px;padding:1px 8px;font-family:var(--fm)">${tmCount}</span>
+        </button>
+      </div>` : '';
+
+  el.innerHTML = `<div>${lessonSection}${srsSection}${tmBtn}</div>`;
 }
 
 function renderSRS(el) {
@@ -3359,5 +3711,45 @@ function schedGh(){
 
 init();
 </script>
+<!-- Vocab Modal -->
+<div class="vocab-modal hidden" id="vocab-modal">
+  <div class="vocab-header">
+    <h2>📚 単語帳</h2>
+    <button class="vocab-close" onclick="closeVocabModal()">×</button>
+  </div>
+  <div class="vocab-tabs">
+    <button class="vocab-tab active" id="vtab-list" onclick="switchVocabTab('list')">単語一覧</button>
+    <button class="vocab-tab" id="vtab-test" onclick="switchVocabTab('test')">復習テスト</button>
+  </div>
+  <div class="vocab-body" id="vocab-body"></div>
+  <button class="vocab-fab" id="vocab-fab" onclick="openVocabForm()">＋</button>
+</div>
+
+<!-- Vocab Form Modal -->
+<div class="vform-modal hidden" id="vform-modal">
+  <div class="vform-inner">
+    <h3 id="vform-title">単語を追加</h3>
+    <div class="mf">
+      <label>単語</label>
+      <input id="vf-word" class="fi" placeholder="例: ephemeral / はかなし">
+    </div>
+    <div class="mf">
+      <label>種類</label>
+      <div style="display:flex;gap:8px">
+        <button id="vf-eng" class="vchip active" onclick="setVocabType('english',event)">英語</button>
+        <button id="vf-cls" class="vchip" onclick="setVocabType('classical',event)">古文</button>
+      </div>
+    </div>
+    <div class="mf">
+      <label>意味</label>
+      <div id="vf-meanings"></div>
+      <button class="bno" style="font-size:12px;margin-top:6px" onclick="addMeaningRow()">＋ 意味を追加</button>
+    </div>
+    <div class="ma" style="margin-top:16px">
+      <button class="bno" onclick="closeVocabForm()">キャンセル</button>
+      <button class="bok" onclick="saveVocabWord()">保存</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>
