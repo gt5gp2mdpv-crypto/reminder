@@ -1286,6 +1286,27 @@ async function init(){
   setTimeout(()=>{
     scheduleAllNotifications();
   },2000);
+  // Swipe left from right edge to open nav
+  (()=>{
+    let sx=0,sy=0;
+    document.addEventListener('touchstart',e=>{
+      sx=e.touches[0].clientX; sy=e.touches[0].clientY;
+    },{passive:true});
+    document.addEventListener('touchend',e=>{
+      const dx=e.changedTouches[0].clientX-sx;
+      const dy=Math.abs(e.changedTouches[0].clientY-sy);
+      // right→left swipe (dx < -60) OR left→right swipe from edge (dx > 40 && sx < 30)
+      const nav=document.getElementById('nav');
+      const isOpen=nav?.classList.contains('open');
+      if(!isOpen && dx>50 && sx<60 && dy<80){
+        // swipe right from left edge → open nav
+        openNav();
+      } else if(isOpen && dx<-50 && dy<80){
+        // swipe left while open → close nav
+        closeNav();
+      }
+    },{passive:true});
+  })();
 }
 async function saveL(){
   try{await idbSet('tasks',P);}
@@ -2007,13 +2028,12 @@ function refreshActiveBS(){
 //  VOCABULARY (単語帳)
 // ════════════════════════════════
 let WORDS = []; // loaded from IDB
-let vocabTab = 'list';
-let vocabFilter = 'all'; // 'all'|'english'|'classical'
+let vocabTab = 'english';
+let vocabFilter = 'english';
 let vocabSearch = '';
 let vocabFormType = 'english';
 let vocabEditId = null;
-let vocabTestQueue = [];
-let vocabTestIdx = 0;
+// test queues managed per-type in _vocabDailyQueue
 
 const POS_LIST = ['名詞','動詞','形容詞','副詞','接続詞','連語','その他'];
 
@@ -2032,18 +2052,27 @@ async function saveWords(){
 function gidV(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
 
 function openVocabModal(){
+  vocabTab='english'; vocabFilter='english';
   document.getElementById('vocab-modal').classList.remove('hidden');
   closeNav();
-  renderVocabBody();
+  switchVocabTab('english');
 }
 function closeVocabModal(){
   document.getElementById('vocab-modal').classList.add('hidden');
 }
 function switchVocabTab(tab){
   vocabTab=tab;
-  document.getElementById('vtab-list').classList.toggle('active',tab==='list');
-  document.getElementById('vtab-test').classList.toggle('active',tab==='test');
-  document.getElementById('vocab-fab').style.display=tab==='list'?'flex':'none';
+  ['english','classical','test-english','test-classical'].forEach(t=>{
+    const el=document.getElementById('vtab-'+t.replace('-','_').replace('test_','test-'));
+    // map tab id to element id
+  });
+  document.getElementById('vtab-english').classList.toggle('active',tab==='english');
+  document.getElementById('vtab-classical').classList.toggle('active',tab==='classical');
+  document.getElementById('vtab-test-en').classList.toggle('active',tab==='test-english');
+  document.getElementById('vtab-test-cl').classList.toggle('active',tab==='test-classical');
+  const isList=tab==='english'||tab==='classical';
+  document.getElementById('vocab-fab').style.display=isList?'flex':'none';
+  if(isList) vocabFilter=tab;
   renderVocabBody();
 }
 
@@ -2063,8 +2092,8 @@ function getVocabTestWords(){
 
 function renderVocabBody(){
   const el=document.getElementById('vocab-body');
-  if(vocabTab==='list') renderVocabList(el);
-  else renderVocabTest(el);
+  if(vocabTab==='english'||vocabTab==='classical') renderVocabList(el);
+  else renderVocabTest(el, vocabTab==='test-english'?'english':'classical');
 }
 
 function renderVocabList(el){
@@ -2076,20 +2105,31 @@ function renderVocabList(el){
   );
   words.sort((a,b)=>a.score-b.score);
 
-  const testCount=getVocabTestWords().length;
-  el.innerHTML=`
-  <div class="vocab-search-row">
-    <input type="search" placeholder="単語・意味を検索..." value="${esc(vocabSearch)}"
-      oninput="vocabSearch=this.value;renderVocabBody()" style="font-size:16px">
-  </div>
-  <div class="vocab-filter-row">
-    <button class="vchip${vocabFilter==='all'?' active':''}" onclick="setVocabFilter('all')">すべて (${WORDS.length})</button>
-    <button class="vchip${vocabFilter==='english'?' active':''}" onclick="setVocabFilter('english')">英語</button>
-    <button class="vchip${vocabFilter==='classical'?' active':''}" onclick="setVocabFilter('classical')">古文</button>
-    ${testCount>0?`<button class="vchip" style="background:rgba(166,227,161,.15);color:#a6e3a1;border-color:#a6e3a1" onclick="switchVocabTab('test')">📝 復習 ${testCount}件</button>`:''}
-  </div>
-  ${words.length===0?'<div class="empty"><div class="ico">📚</div><p>単語がありません<br>＋ボタンで追加してください</p></div>':
-    words.map(w=>renderVocabCard(w)).join('')}`;
+  // Keep search input if already rendered, just update cards
+  const existingSearch = el.querySelector('#vocab-search-input');
+  if(!existingSearch){
+    el.innerHTML=`<div class="vocab-search-row">
+      <input id="vocab-search-input" type="search" placeholder="単語・意味を検索..." value="${esc(vocabSearch)}" style="font-size:16px">
+    </div><div id="vocab-cards"></div>`;
+    document.getElementById('vocab-search-input').addEventListener('input', function(){
+      vocabSearch=this.value; renderVocabCards();
+    });
+  }
+  renderVocabCards();
+}
+function renderVocabCards(){
+  let words=[...WORDS];
+  if(vocabFilter!=='all') words=words.filter(w=>w.type===vocabFilter);
+  if(vocabSearch) words=words.filter(w=>
+    w.word.toLowerCase().includes(vocabSearch.toLowerCase())||
+    (w.meanings||[]).some(m=>m.text.includes(vocabSearch))
+  );
+  words.sort((a,b)=>a.score-b.score);
+  const el=document.getElementById('vocab-cards');
+  if(!el)return;
+  el.innerHTML=words.length===0?'<div class="empty"><div class="ico">📚</div><p>単語がありません<br>＋ボタンで追加してください</p></div>':
+    words.map(w=>renderVocabCard(w)).join('');
+  void el; // suppress
 }
 
 function renderVocabCard(w){
@@ -2122,37 +2162,69 @@ function renderVocabCard(w){
 }
 
 function flipVocabCard(id){
-  document.getElementById('vc-'+id)?.classList.toggle('flipped');
+  const card=document.getElementById('vc-'+id);
+  if(!card)return;
+  const isFlipped=card.classList.contains('flipped');
+  // close all other cards first
+  document.querySelectorAll('.vcard.flipped').forEach(c=>{
+    if(c.id!=='vc-'+id) c.classList.remove('flipped');
+  });
+  card.classList.toggle('flipped',!isFlipped);
 }
 
 function setVocabFilter(f){
   vocabFilter=f; renderVocabBody();
 }
 
-function renderVocabTest(el){
-  if(vocabTestQueue.length===0||vocabTestIdx===0){
-    vocabTestQueue=getVocabTestWords();
-    vocabTestIdx=0;
-    // shuffle
-    for(let i=vocabTestQueue.length-1;i>0;i--){
-      const j=Math.floor(Math.random()*(i+1));
-      [vocabTestQueue[i],vocabTestQueue[j]]=[vocabTestQueue[j],vocabTestQueue[i]];
-    }
+// daily test queue per type (generated at 21:00)
+let _vocabDailyQueue = { english: null, classical: null, date: null };
+
+function getOrBuildDailyQueue(type) {
+  const today = new Date().toISOString().slice(0, 10);
+  if (_vocabDailyQueue.date !== today) {
+    _vocabDailyQueue = { english: null, classical: null, date: today };
   }
-  if(vocabTestQueue.length===0){
+  if (!_vocabDailyQueue[type]) {
+    let q = getVocabTestWords().filter(w => w.type === type);
+    // shuffle
+    for (let i = q.length-1; i > 0; i--) {
+      const j = Math.floor(Math.random()*(i+1));
+      [q[i],q[j]] = [q[j],q[i]];
+    }
+    _vocabDailyQueue[type] = { queue: q, idx: 0 };
+  }
+  return _vocabDailyQueue[type];
+}
+
+// Trigger daily queue build at 21:00
+function checkVocabDailyReset() {
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+  const key = 'sf4-vocab-daily';
+  const last = localStorage.getItem(key);
+  if (last !== today && now.getHours() >= 21) {
+    // rebuild queues for today
+    _vocabDailyQueue = { english: null, classical: null, date: null };
+    localStorage.setItem(key, today);
+  }
+}
+
+function renderVocabTest(el, type) {
+  checkVocabDailyReset();
+  const state = getOrBuildDailyQueue(type);
+  const { queue, idx } = state;
+  if (queue.length === 0) {
     el.innerHTML=`<div class="empty"><div class="ico">🎉</div><p>今日の復習単語はありません！</p></div>`;
     return;
   }
-  const remaining=vocabTestQueue.length-vocabTestIdx;
-  if(remaining<=0){
-    el.innerHTML=`<div class="empty"><div class="ico">✅</div><p>テスト完了！<br>${vocabTestQueue.length}件復習しました</p>
-      <button class="bok" style="margin-top:16px" onclick="vocabTestIdx=0;renderVocabBody()">もう一度</button></div>`;
+  if (idx >= queue.length) {
+    el.innerHTML=`<div class="empty"><div class="ico">✅</div><p>テスト完了！<br>${queue.length}件復習しました</p>
+      <button class="bok" style="margin-top:16px" onclick="_vocabDailyQueue['${type}']=null;renderVocabBody()">もう一度</button></div>`;
     return;
   }
-  const w=vocabTestQueue[vocabTestIdx];
-  if(!w){vocabTestIdx=0;renderVocabBody();return;}
+  const w = queue[idx];
   el.innerHTML=`
-  <div style="font-size:12px;color:var(--td);margin-bottom:12px">${vocabTestIdx+1} / ${vocabTestQueue.length}</div>
+  <div style="font-size:12px;color:var(--td);margin-bottom:12px">${idx+1} / ${queue.length}</div>
   <div class="vtest-card" id="vtest-card" onclick="revealVocabCard()">
     <div class="vtest-word">${esc(w.word)}</div>
     <div style="font-size:12px;color:var(--td)">${w.type==='english'?'英語':'古文'} · ★${w.score.toFixed(1)}</div>
@@ -2163,8 +2235,8 @@ function renderVocabTest(el){
         <span style="font-size:14px">${esc(m.text)}</span>
       </div>`).join('')}
       <div class="vtest-btns">
-        <button class="btn-forget" onclick="submitVocabTest(false,event)">😓 わからなかった</button>
-        <button class="btn-know" onclick="submitVocabTest(true,event)">😊 わかった</button>
+        <button class="btn-forget" onclick="submitVocabTest(false,event,'${type}')">😓 わからなかった</button>
+        <button class="btn-know" onclick="submitVocabTest(true,event,'${type}')">😊 わかった</button>
       </div>
     </div>
   </div>`;
@@ -2174,9 +2246,10 @@ function revealVocabCard(){
   document.getElementById('vtest-card')?.classList.add('revealed');
 }
 
-function submitVocabTest(knew, event){
+function submitVocabTest(knew, event, type){
   event?.stopPropagation();
-  const w=vocabTestQueue[vocabTestIdx];
+  const state=getOrBuildDailyQueue(type);
+  const w=state.queue[state.idx];
   if(!w)return;
   const today=new Date().toISOString().slice(0,10);
   if(w.lastTestedAt!==today){
@@ -2185,12 +2258,11 @@ function submitVocabTest(knew, event){
       if(knew){wObj.score=Math.min(2.0,Math.round((wObj.score+0.1)*10)/10);}
       else{wObj.score=1.0;}
       wObj.lastTestedAt=today;
-      // sync back to queue
       w.score=wObj.score; w.lastTestedAt=wObj.lastTestedAt;
     }
     saveWords();
   }
-  vocabTestIdx++;
+  state.idx++;
   renderVocabBody();
 }
 
@@ -2251,6 +2323,9 @@ function removeMeaningRow(i){
 function saveVocabWord(){
   const word=document.getElementById('vf-word').value.trim();
   if(!word){document.getElementById('vf-word').focus();return;}
+  // duplicate check
+  const dup=WORDS.find(w=>w.word.toLowerCase()===word.toLowerCase()&&w.type===vocabFormType&&w.id!==vocabEditId);
+  if(dup){alert(`「${word}」はすでに登録されています`);return;}
   const rows=[...document.querySelectorAll('#vf-meanings .meaning-row')];
   const meanings=rows.map(r=>({
     text:r.querySelector('input').value.trim(),
@@ -3721,8 +3796,10 @@ init();
     <button class="vocab-close" onclick="closeVocabModal()">×</button>
   </div>
   <div class="vocab-tabs">
-    <button class="vocab-tab active" id="vtab-list" onclick="switchVocabTab('list')">単語一覧</button>
-    <button class="vocab-tab" id="vtab-test" onclick="switchVocabTab('test')">復習テスト</button>
+    <button class="vocab-tab active" id="vtab-english" onclick="switchVocabTab('english')">英語</button>
+    <button class="vocab-tab" id="vtab-classical" onclick="switchVocabTab('classical')">古文</button>
+    <button class="vocab-tab" id="vtab-test-en" onclick="switchVocabTab('test-english')">📝英語テスト</button>
+    <button class="vocab-tab" id="vtab-test-cl" onclick="switchVocabTab('test-classical')">📝古文テスト</button>
   </div>
   <div class="vocab-body" id="vocab-body"></div>
   <button class="vocab-fab" id="vocab-fab" onclick="openVocabForm()">＋</button>
