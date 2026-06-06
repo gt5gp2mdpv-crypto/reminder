@@ -81,7 +81,7 @@ h1{font-family:var(--fd);font-size:22px;color:var(--ac);}
 .pc-info{flex:1;min-width:0;}
 .pc-title{font-size:14px;font-weight:600;word-break:break-all;}
 .pc-meta{display:flex;gap:4px;flex-wrap:wrap;margin-top:3px;}
-.tag{font-size:10px;font-family:var(--fm);padding:2px 6px;border-radius:20px;background:var(--sf3);color:var(--td);word-break:break-all;white-space:normal;max-width:100%;}
+.tag{font-size:12px;font-family:var(--fm);padding:3px 8px;border-radius:20px;background:var(--sf3);color:var(--td);word-break:break-all;white-space:normal;max-width:100%;}
 .tag.t-問題集{background:rgba(245,169,127,.15);color:var(--cj);}
 .tag.t-教科書{background:rgba(137,220,235,.15);color:var(--cg);}
 .tag.t-単語帳{background:rgba(166,227,161,.15);color:var(--cz);}
@@ -685,7 +685,13 @@ function renderLessonModal(parentId){
         </select>
       </div>
     </div>
-    ` : `<p style="font-size:13px;color:var(--td);margin-bottom:12px">「${esc(p.title)}」の授業日を編集します。タップで選択・解除できます。</p>`}
+    ` : `
+    <div class="mf">
+      <label>授業名</label>
+      <input id="lesson-name" class="fi" style="width:100%" value="${esc(p.title)}" placeholder="例: 英コミ、現代文">
+    </div>
+    <p style="font-size:12px;color:var(--td);margin-bottom:12px">授業日をタップで選択・解除できます。</p>
+    `}
 
     <div class="flbl" style="margin-bottom:6px">選択済み（${lessonCalState.selected.length}件）</div>
     <div class="lc-selected" id="lc-selected"></div>
@@ -765,6 +771,8 @@ function saveLessonSetup(){
     // Edit existing: sync subtasks to match selected dates
     const p = P.find(x=>x.id===editId);
     if(!p){ closeLessonModal(); return; }
+    const editName = document.getElementById('lesson-name')?.value.trim();
+    if(editName) p.title = editName;
 
     // Remove lesson subtasks whose date is no longer selected
     p.subtasks = p.subtasks.filter(s=>{
@@ -1298,10 +1306,10 @@ async function init(){
       // right→left swipe (dx < -60) OR left→right swipe from edge (dx > 40 && sx < 30)
       const nav=document.getElementById('nav');
       const isOpen=nav?.classList.contains('open');
-      if(!isOpen && dx>50 && sx<60 && dy<80){
-        // swipe right from left edge → open nav
+      if(!isOpen && dx>80 && dy<100){
+        // swipe right anywhere → open nav
         openNav();
-      } else if(isOpen && dx<-50 && dy<80){
+      } else if(isOpen && dx<-50 && dy<100){
         // swipe left while open → close nav
         closeNav();
       }
@@ -2062,14 +2070,9 @@ function closeVocabModal(){
 }
 function switchVocabTab(tab){
   vocabTab=tab;
-  ['english','classical','test-english','test-classical'].forEach(t=>{
-    const el=document.getElementById('vtab-'+t.replace('-','_').replace('test_','test-'));
-    // map tab id to element id
-  });
   document.getElementById('vtab-english').classList.toggle('active',tab==='english');
   document.getElementById('vtab-classical').classList.toggle('active',tab==='classical');
-  document.getElementById('vtab-test-en').classList.toggle('active',tab==='test-english');
-  document.getElementById('vtab-test-cl').classList.toggle('active',tab==='test-classical');
+  document.getElementById('vtab-test').classList.toggle('active',tab==='test');
   const isList=tab==='english'||tab==='classical';
   document.getElementById('vocab-fab').style.display=isList?'flex':'none';
   if(isList) vocabFilter=tab;
@@ -2093,7 +2096,7 @@ function getVocabTestWords(){
 function renderVocabBody(){
   const el=document.getElementById('vocab-body');
   if(vocabTab==='english'||vocabTab==='classical') renderVocabList(el);
-  else renderVocabTest(el, vocabTab==='test-english'?'english':'classical');
+  else renderVocabTest(el);
 }
 
 function renderVocabList(el){
@@ -2176,93 +2179,165 @@ function setVocabFilter(f){
   vocabFilter=f; renderVocabBody();
 }
 
-// daily test queue per type (generated at 21:00)
-let _vocabDailyQueue = { english: null, classical: null, date: null };
-
-function getOrBuildDailyQueue(type) {
-  const today = new Date().toISOString().slice(0, 10);
-  if (_vocabDailyQueue.date !== today) {
-    _vocabDailyQueue = { english: null, classical: null, date: today };
-  }
-  if (!_vocabDailyQueue[type]) {
-    let q = getVocabTestWords().filter(w => w.type === type);
-    // shuffle
-    for (let i = q.length-1; i > 0; i--) {
-      const j = Math.floor(Math.random()*(i+1));
-      [q[i],q[j]] = [q[j],q[i]];
-    }
-    _vocabDailyQueue[type] = { queue: q, idx: 0 };
-  }
-  return _vocabDailyQueue[type];
-}
-
-// Trigger daily queue build at 21:00
-function checkVocabDailyReset() {
+// ── Vocab daily test queue ──
+// Key format: sf4-vq-YYYY-MM-DD  value: {english:{queue:[ids],idx},classical:{queue:[ids],idx}}
+function getVocabTestDateKey() {
   const now = new Date();
-  const today = now.toISOString().slice(0, 10);
-  const key = 'sf4-vocab-daily';
-  const last = localStorage.getItem(key);
-  if (last !== today && now.getHours() >= 21) {
-    // rebuild queues for today
-    _vocabDailyQueue = { english: null, classical: null, date: null };
-    localStorage.setItem(key, today);
+  // before 21:00 → use yesterday's key; 21:00+ → use today's key
+  if (now.getHours() < 21) {
+    const y = new Date(now); y.setDate(y.getDate()-1);
+    return y.toISOString().slice(0,10);
+  }
+  return now.toISOString().slice(0,10);
+}
+
+function getVocabTestLabel() {
+  const d = getVocabTestDateKey();
+  const [y,m,dd] = d.split('-');
+  return `${parseInt(m)}/${parseInt(dd)}のテスト`;
+}
+
+function loadVocabQueues() {
+  const key = 'sf4-vq-' + getVocabTestDateKey();
+  try {
+    const saved = localStorage.getItem(key);
+    if (saved) return JSON.parse(saved);
+  } catch(e){}
+  return null;
+}
+
+function saveVocabQueues(data) {
+  const key = 'sf4-vq-' + getVocabTestDateKey();
+  localStorage.setItem(key, JSON.stringify(data));
+  // cleanup old keys (keep only last 3 days)
+  for (let i = 4; i < 30; i++) {
+    const old = new Date(); old.setDate(old.getDate()-i);
+    localStorage.removeItem('sf4-vq-' + old.toISOString().slice(0,10));
   }
 }
 
-function renderVocabTest(el, type) {
-  checkVocabDailyReset();
-  const state = getOrBuildDailyQueue(type);
-  const { queue, idx } = state;
-  if (queue.length === 0) {
-    el.innerHTML=`<div class="empty"><div class="ico">🎉</div><p>今日の復習単語はありません！</p></div>`;
-    return;
+function buildVocabQueue(type) {
+  let q = getVocabTestWords().filter(w => w.type === type);
+  for (let i = q.length-1; i > 0; i--) {
+    const j = Math.floor(Math.random()*(i+1));
+    [q[i],q[j]] = [q[j],q[i]];
   }
-  if (idx >= queue.length) {
-    el.innerHTML=`<div class="empty"><div class="ico">✅</div><p>テスト完了！<br>${queue.length}件復習しました</p>
-      <button class="bok" style="margin-top:16px" onclick="_vocabDailyQueue['${type}']=null;renderVocabBody()">もう一度</button></div>`;
-    return;
+  return { ids: q.map(w=>w.id), idx: 0 };
+}
+
+function getOrBuildQueues() {
+  const now = new Date();
+  // Only generate new queue after 21:00 for today
+  let data = loadVocabQueues();
+  const todayKey = now.toISOString().slice(0,10);
+  const activeKey = getVocabTestDateKey();
+  // If no data for this date OR it's after 21:00 and key is today and no data yet
+  if (!data) {
+    if (activeKey === todayKey && now.getHours() >= 21) {
+      // generate fresh queues for today
+      data = {
+        english: buildVocabQueue('english'),
+        classical: buildVocabQueue('classical'),
+      };
+      saveVocabQueues(data);
+    } else if (activeKey !== todayKey) {
+      // before 21:00 - try yesterday's, might not exist yet
+      data = { english:{ids:[],idx:0}, classical:{ids:[],idx:0} };
+    } else {
+      data = { english:{ids:[],idx:0}, classical:{ids:[],idx:0} };
+    }
   }
+  return data;
+}
+
+function renderVocabTestSection(type, data) {
+  const state = data[type] || {ids:[],idx:0};
+  const queue = state.ids.map(id=>WORDS.find(w=>w.id===id)).filter(Boolean);
+  const idx = state.idx || 0;
+  const done = Math.min(idx, queue.length);
+  const total = queue.length;
+  const typeLabel = type==='english'?'英語':'古文';
+
+  if (total === 0) {
+    return `<div style="padding:10px 0;font-size:13px;color:var(--td)">📖 ${typeLabel}：対象単語なし</div>`;
+  }
+
+  if (idx >= total) {
+    return `<div style="padding:10px 0">
+      <div style="font-size:13px;font-weight:600;margin-bottom:6px">📖 ${typeLabel}テスト <span style="color:var(--ac3);font-size:11px">✅ 完了</span></div>
+      <div style="font-size:12px;color:var(--td)">${total}件すべて完了</div>
+    </div>`;
+  }
+
   const w = queue[idx];
-  el.innerHTML=`
-  <div style="font-size:12px;color:var(--td);margin-bottom:12px">${idx+1} / ${queue.length}</div>
-  <div class="vtest-card" id="vtest-card" onclick="revealVocabCard()">
-    <div class="vtest-word">${esc(w.word)}</div>
-    <div style="font-size:12px;color:var(--td)">${w.type==='english'?'英語':'古文'} · ★${w.score.toFixed(1)}</div>
-    <div style="font-size:11px;color:var(--td);margin-top:8px">タップして意味を確認</div>
-    <div class="vtest-back">
-      ${(w.meanings||[]).map(m=>`<div class="vcard-meaning" style="justify-content:center">
-        <span class="pos-badge pos-${m.pos||'その他'}">${m.pos||'その他'}</span>
-        <span style="font-size:14px">${esc(m.text)}</span>
-      </div>`).join('')}
-      <div class="vtest-btns">
-        <button class="btn-forget" onclick="submitVocabTest(false,event,'${type}')">😓 わからなかった</button>
-        <button class="btn-know" onclick="submitVocabTest(true,event,'${type}')">😊 わかった</button>
+  return `<div style="margin-bottom:16px">
+    <div style="font-size:13px;font-weight:600;margin-bottom:8px">📖 ${typeLabel}テスト
+      <span style="font-size:11px;color:var(--td);margin-left:6px">${done}/${total}</span>
+    </div>
+    <div class="vtest-card" id="vtest-card-${type}" onclick="revealVocabCard('${type}')">
+      <div class="vtest-word">${esc(w.word)}</div>
+      <div style="font-size:12px;color:var(--td)">★${w.score.toFixed(1)}</div>
+      <div style="font-size:11px;color:var(--td);margin-top:8px">タップして意味を確認</div>
+      <div class="vtest-back">
+        ${(w.meanings||[]).map(m=>`<div class="vcard-meaning" style="justify-content:center">
+          <span class="pos-badge pos-${m.pos||'その他'}">${m.pos||'その他'}</span>
+          <span style="font-size:14px">${esc(m.text)}</span>
+        </div>`).join('')}
+        <div class="vtest-btns">
+          <button class="btn-forget" onclick="submitVocabTest(false,event,'${type}')">😓 わからなかった</button>
+          <button class="btn-know" onclick="submitVocabTest(true,event,'${type}')">😊 わかった</button>
+        </div>
       </div>
     </div>
   </div>`;
 }
 
-function revealVocabCard(){
-  document.getElementById('vtest-card')?.classList.add('revealed');
+function renderVocabTest(el) {
+  const now = new Date();
+  const isAfter21 = now.getHours() >= 21;
+  const data = getOrBuildQueues();
+  const enState = data.english||{ids:[],idx:0};
+  const clState = data.classical||{ids:[],idx:0};
+  const enQ = enState.ids.map(id=>WORDS.find(w=>w.id===id)).filter(Boolean);
+  const clQ = clState.ids.map(id=>WORDS.find(w=>w.id===id)).filter(Boolean);
+  const totalDone = Math.min(enState.idx||0,enQ.length)+Math.min(clState.idx||0,clQ.length);
+  const totalAll = enQ.length + clQ.length;
+  const label = getVocabTestLabel();
+  const statusLabel = totalAll===0?'':totalDone>=totalAll
+    ? `<span style="color:var(--ac3);font-size:11px;margin-left:6px">✅ 完了</span>`
+    : `<span style="color:var(--td);font-size:11px;margin-left:6px">${totalDone}/${totalAll}</span>`;
+  const notYetMsg = !isAfter21 && totalAll===0
+    ? `<div style="font-size:12px;color:var(--td);margin-bottom:12px">21:00以降に今日のテストが生成されます</div>` : '';
+
+  el.innerHTML=`
+    <div style="font-size:15px;font-weight:700;margin-bottom:4px">${label}${statusLabel}</div>
+    ${notYetMsg}
+    <div style="height:1px;background:var(--bd);margin-bottom:14px"></div>
+    ${renderVocabTestSection('english', data)}
+    <div style="height:1px;background:var(--bd);margin:8px 0 14px"></div>
+    ${renderVocabTestSection('classical', data)}
+  `;
+}
+
+function revealVocabCard(type){
+  document.getElementById('vtest-card-'+(type||'english'))?.classList.add('revealed');
 }
 
 function submitVocabTest(knew, event, type){
   event?.stopPropagation();
-  const state=getOrBuildDailyQueue(type);
-  const w=state.queue[state.idx];
+  const data = getOrBuildQueues();
+  const state = data[type]||{ids:[],idx:0};
+  const w = WORDS.find(x=>x.id===state.ids[state.idx]);
   if(!w)return;
   const today=new Date().toISOString().slice(0,10);
   if(w.lastTestedAt!==today){
-    const wObj=WORDS.find(x=>x.id===w.id);
-    if(wObj){
-      if(knew){wObj.score=Math.min(2.0,Math.round((wObj.score+0.1)*10)/10);}
-      else{wObj.score=1.0;}
-      wObj.lastTestedAt=today;
-      w.score=wObj.score; w.lastTestedAt=wObj.lastTestedAt;
-    }
+    if(knew){w.score=Math.min(2.0,Math.round((w.score+0.1)*10)/10);}
+    else{w.score=1.0;}
+    w.lastTestedAt=today;
     saveWords();
   }
-  state.idx++;
+  state.idx=(state.idx||0)+1;
+  saveVocabQueues(data);
   renderVocabBody();
 }
 
@@ -2286,12 +2361,17 @@ function openVocabForm(id=null){
 function closeVocabForm(){
   document.getElementById('vform-modal').classList.add('hidden');
   vocabEditId=null;
+  const r=document.getElementById('vf-spell-result');
+  if(r) r.textContent='';
 }
 function setVocabType(t, event){
   event?.stopPropagation();
   vocabFormType=t;
   document.getElementById('vf-eng').classList.toggle('active',t==='english');
   document.getElementById('vf-cls').classList.toggle('active',t==='classical');
+  const r=document.getElementById('vf-spell-result');
+  if(r && t==='classical') r.textContent='';
+  else if(r && t==='english') checkVocabSpelling();
 }
 function renderMeaningRows(meanings){
   const el=document.getElementById('vf-meanings');
@@ -2320,6 +2400,40 @@ function removeMeaningRow(i){
   meanings.splice(i,1);
   renderMeaningRows(meanings);
 }
+async function checkVocabSpelling(){
+  const word = document.getElementById('vf-word')?.value.trim();
+  const resultEl = document.getElementById('vf-spell-result');
+  if(!resultEl) return;
+  if(!word || vocabFormType !== 'english'){ resultEl.textContent=''; return; }
+  // only check single words (no spaces)
+  if(word.includes(' ')){ resultEl.textContent=''; return; }
+  resultEl.innerHTML = '<span style="color:var(--td)">🔍 チェック中...</span>';
+  try{
+    const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`);
+    if(res.ok){
+      const data = await res.json();
+      if(Array.isArray(data) && data.length > 0){
+        const phonetic = data[0].phonetic || data[0].phonetics?.find(p=>p.text)?.text || '';
+        resultEl.innerHTML = `<span style="color:var(--ac3)">✅ 正しいスペルです${phonetic?' <span style="color:var(--td)">'+phonetic+'</span>':''}</span>`;
+      } else {
+        resultEl.innerHTML = '<span style="color:var(--exp)">❌ 辞書に見つかりません</span>';
+      }
+    } else if(res.status === 404){
+      // API returns suggestions in some cases
+      let hint = '';
+      try{
+        const errData = await res.json();
+        if(errData.message) hint = errData.message;
+      }catch(e){}
+      resultEl.innerHTML = `<span style="color:var(--exp)">❌ 辞書に見つかりません${hint?' — '+hint:''}</span>`;
+    } else {
+      resultEl.innerHTML = '<span style="color:var(--td)">⚠ チェックできませんでした</span>';
+    }
+  }catch(e){
+    resultEl.innerHTML = '<span style="color:var(--td)">⚠ オフライン or エラー</span>';
+  }
+}
+
 function saveVocabWord(){
   const word=document.getElementById('vf-word').value.trim();
   if(!word){document.getElementById('vf-word').focus();return;}
@@ -2446,8 +2560,8 @@ function getSRSDueTasks() {
     // parent itself is NEVER a review target
     // skip lesson parents entirely - they show up via lesson path
     if (p._lessonParent) {
-      // include _lesson subtasks directly if they have dueDate due
-      (p.subtasks||[]).filter(s=>s._lesson).forEach(s=>{
+      // lesson subtasks: no completion required, just check dueDate
+      (p.subtasks||[]).filter(s=>s._lesson&&!s.done).forEach(s=>{
         if(s.dueDate && new Date(s.dueDate) <= now) {
           due.push({ task: s, rootId: p.id, isParent: false, isLesson: true });
         }
@@ -2683,8 +2797,8 @@ function renderSRS(el) {
     return `<div class="pc" style="margin-bottom:10px">
       <div class="pc-head" style="padding:12px 14px">
         <div class="pc-info">
-          ${parentLabel && !isParent ? `<div style="font-size:10px;color:var(--td);margin-bottom:2px">📖 ${esc(parentLabel)}</div>` : ''}
-          <div class="pc-title">${esc(taskLabel || parentLabel)}</div>
+          ${parentLabel && !isParent ? `<div style="font-size:12px;color:var(--td);margin-bottom:2px">📖 ${esc(parentLabel)}</div>` : ''}
+          <div class="pc-title" style="font-size:15px">${esc(taskLabel || parentLabel)}</div>
           ${fieldStr ? `<div style="font-size:11px;color:var(--td);margin-top:2px">${esc(fieldStr)}</div>` : ''}
           <div class="pc-meta" style="margin-top:4px">
             ${overdueLabel}
@@ -3798,8 +3912,7 @@ init();
   <div class="vocab-tabs">
     <button class="vocab-tab active" id="vtab-english" onclick="switchVocabTab('english')">英語</button>
     <button class="vocab-tab" id="vtab-classical" onclick="switchVocabTab('classical')">古文</button>
-    <button class="vocab-tab" id="vtab-test-en" onclick="switchVocabTab('test-english')">📝英語テスト</button>
-    <button class="vocab-tab" id="vtab-test-cl" onclick="switchVocabTab('test-classical')">📝古文テスト</button>
+    <button class="vocab-tab" id="vtab-test" onclick="switchVocabTab('test')">📝 復習テスト</button>
   </div>
   <div class="vocab-body" id="vocab-body"></div>
   <button class="vocab-fab" id="vocab-fab" onclick="openVocabForm()">＋</button>
@@ -3811,7 +3924,8 @@ init();
     <h3 id="vform-title">単語を追加</h3>
     <div class="mf">
       <label>単語</label>
-      <input id="vf-word" class="fi" placeholder="例: ephemeral / はかなし">
+      <input id="vf-word" class="fi" placeholder="例: ephemeral / はかなし" spellcheck="true" autocorrect="on" onblur="checkVocabSpelling()">
+      <div id="vf-spell-result" style="font-size:12px;margin-top:4px;min-height:18px"></div>
     </div>
     <div class="mf">
       <label>種類</label>
