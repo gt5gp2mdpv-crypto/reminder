@@ -2434,10 +2434,11 @@ async function checkVocabSpelling(){
   }
 }
 
+let _vocabPending = null; // temp storage for confirm
+
 function saveVocabWord(){
   const word=document.getElementById('vf-word').value.trim();
   if(!word){document.getElementById('vf-word').focus();return;}
-  // duplicate check
   const dup=WORDS.find(w=>w.word.toLowerCase()===word.toLowerCase()&&w.type===vocabFormType&&w.id!==vocabEditId);
   if(dup){alert(`「${word}」はすでに登録されています`);return;}
   const rows=[...document.querySelectorAll('#vf-meanings .meaning-row')];
@@ -2446,14 +2447,43 @@ function saveVocabWord(){
     pos:r.querySelector('select').value
   })).filter(m=>m.text);
   if(!meanings.length){alert('意味を入力してください');return;}
-  if(vocabEditId){
-    const w=WORDS.find(x=>x.id===vocabEditId);
-    if(w){w.word=word;w.type=vocabFormType;w.meanings=meanings;}
+
+  // store pending and show confirm
+  _vocabPending={word, type:vocabFormType, meanings, editId:vocabEditId};
+  const typeLabel=vocabFormType==='english'?'英語':'古文';
+  const spellHtml=document.getElementById('vf-spell-result')?.innerHTML||'';
+  document.getElementById('vconfirm-body').innerHTML=`
+    <div style="background:var(--sf3);border-radius:var(--rs);padding:14px 16px;margin-bottom:10px">
+      <div style="font-size:18px;font-weight:700;margin-bottom:4px">${esc(word)}</div>
+      <span class="tag">${typeLabel}</span>
+      ${spellHtml?`<div style="margin-top:6px;font-size:12px">${spellHtml}</div>`:''}
+    </div>
+    <div style="font-size:12px;color:var(--td);margin-bottom:6px">意味：</div>
+    ${meanings.map(m=>`<div class="vcard-meaning" style="margin-bottom:6px">
+      <span class="pos-badge pos-${m.pos}">${m.pos}</span>
+      <span style="font-size:14px">${esc(m.text)}</span>
+    </div>`).join('')}`;
+  document.getElementById('vconfirm-modal').classList.remove('hidden');
+}
+
+function cancelVocabConfirm(){
+  document.getElementById('vconfirm-modal').classList.add('hidden');
+  _vocabPending=null;
+}
+
+function commitVocabWord(){
+  if(!_vocabPending)return;
+  const{word,type,meanings,editId}=_vocabPending;
+  if(editId){
+    const w=WORDS.find(x=>x.id===editId);
+    if(w){w.word=word;w.type=type;w.meanings=meanings;}
   } else {
-    WORDS.push({id:gidV(),word,type:vocabFormType,createdAt:new Date().toISOString(),
+    WORDS.push({id:gidV(),word,type,createdAt:new Date().toISOString(),
       lastTestedAt:null,score:1.0,meanings});
   }
   saveWords();
+  document.getElementById('vconfirm-modal').classList.add('hidden');
+  _vocabPending=null;
   closeVocabForm();
   renderVocabBody();
 }
@@ -3941,7 +3971,18 @@ init();
     </div>
     <div class="ma" style="margin-top:16px">
       <button class="bno" onclick="closeVocabForm()">キャンセル</button>
-      <button class="bok" onclick="saveVocabWord()">保存</button>
+      <button class="bok" onclick="saveVocabWord()">確認する →</button>
+    </div>
+  </div>
+</div>
+<!-- Vocab Confirm Modal -->
+<div class="vform-modal hidden" id="vconfirm-modal">
+  <div class="vform-inner" style="max-height:70vh">
+    <h3>確認</h3>
+    <div id="vconfirm-body" style="margin-bottom:20px"></div>
+    <div class="ma">
+      <button class="bno" onclick="cancelVocabConfirm()">キャンセル</button>
+      <button class="bok" onclick="commitVocabWord()">追加する</button>
     </div>
   </div>
 </div>
