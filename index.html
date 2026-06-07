@@ -3682,6 +3682,7 @@ function collectCalEvents(){
   // returns flat list of {dl, title, fields, subject, tab, parentTitle, parentSubject, id, rootId, done, totalItems, progress}
   const evs=[];
   P.forEach(p=>{
+    if(p._lessonParent) return; // 授業復習タスクはカレンダーに表示しない
     // col(node, ancestorPath)
     // ancestorPath = array of ancestor nodes from root down to direct parent
     function col(node, path){
