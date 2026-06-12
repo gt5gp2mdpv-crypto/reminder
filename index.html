@@ -639,7 +639,13 @@ function openLessonModal(parentId=null){
     if(p){
       lessonCalState.selected = (p.subtasks||[])
         .filter(s=>s._lesson)
-        .map(s=>s.deadline.slice(0,10));
+        .map(s=>{
+          // s.deadline (翌日) から授業日 (前日) を算出する
+          const d = new Date(s.deadline.replace('T', ' '));
+          d.setDate(d.getDate() - 1);
+          const pad = n => n.toString().padStart(2, '0');
+          return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+        });
     }
   } else {
     lessonCalState.selected = [];
@@ -777,12 +783,25 @@ function saveLessonSetup(){
     // Remove lesson subtasks whose date is no longer selected
     p.subtasks = p.subtasks.filter(s=>{
       if(!s._lesson) return true; // keep non-lesson subtasks
-      const dateKey = s.deadline.slice(0,10);
-      return selected.includes(dateKey);
+      // s.deadline (翌日) から授業日 (前日) を逆算して判定する
+      const d = new Date(s.deadline.replace('T', ' '));
+      d.setDate(d.getDate() - 1);
+      const pad = n => n.toString().padStart(2, '0');
+      const lessonDate = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+      return selected.includes(lessonDate);
     });
 
     // Add new dates not yet in subtasks
-    const existing = new Set(p.subtasks.filter(s=>s._lesson).map(s=>s.deadline.slice(0,10)));
+    const existing = new Set(
+      p.subtasks
+        .filter(s=>s._lesson)
+        .map(s=>{
+          const d = new Date(s.deadline.replace('T', ' '));
+          d.setDate(d.getDate() - 1);
+          const pad = n => n.toString().padStart(2, '0');
+          return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+        })
+    );
     selected.forEach(d=>{
       if(existing.has(d)) return;
       const dt = new Date(d.replace(/-/g, '/') + ' ' + time);
