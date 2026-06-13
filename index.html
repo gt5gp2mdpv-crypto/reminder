@@ -2199,21 +2199,38 @@ function setVocabFilter(f){
 }
 
 // ── Vocab daily test queue ──
-// Key format: sf4-vq-YYYY-MM-DD  value: {english:{queue:[ids],idx},classical:{queue:[ids],idx}}
+// Key format: sf4-vq-YYYY-MM-DD-HH  value: {english:{queue:[ids],idx},classical:{queue:[ids],idx}}
 function getVocabTestDateKey() {
   const now = new Date();
-  // before 21:00 → use yesterday's key; 21:00+ → use today's key
-  if (now.getHours() < 21) {
-    const y = new Date(now); y.setDate(y.getDate()-1);
-    return y.toISOString().slice(0,10);
+  const H = now.getHours();
+  let d = new Date(now);
+  let slot = '';
+  if (H >= 9 && H < 15) {
+    slot = '09';
+  } else if (H >= 15 && H < 21) {
+    slot = '15';
+  } else if (H >= 21) {
+    slot = '21';
+  } else {
+    // 0:00 〜 9:00 の間は、前日の21:00からのテストを表示
+    d.setDate(d.getDate() - 1);
+    slot = '21';
   }
-  return now.toISOString().slice(0,10);
+  const pad = n => n.toString().padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}-${slot}`;
 }
 
 function getVocabTestLabel() {
-  const d = getVocabTestDateKey();
-  const [y,m,dd] = d.split('-');
-  return `${parseInt(m)}/${parseInt(dd)}のテスト`;
+  const key = getVocabTestDateKey(); // YYYY-MM-DD-HH
+  const parts = key.split('-');
+  const m = parseInt(parts[1]);
+  const dd = parseInt(parts[2]);
+  const slot = parts[3];
+  let slotStr = '';
+  if (slot === '09') slotStr = '昼前（9:00〜15:00）';
+  else if (slot === '15') slotStr = '夕方（15:00〜21:00）';
+  else if (slot === '21') slotStr = '夜・朝（21:00〜翌9:00）';
+  return `${m}/${dd} ${slotStr}のテスト`;
 }
 
 function loadVocabQueues() {
@@ -2231,40 +2248,48 @@ function saveVocabQueues(data) {
   // cleanup old keys (keep only last 3 days)
   for (let i = 4; i < 30; i++) {
     const old = new Date(); old.setDate(old.getDate()-i);
+    const pad = n => n.toString().padStart(2, '0');
+    const dateStr = `${old.getFullYear()}-${pad(old.getMonth()+1)}-${pad(old.getDate())}`;
+    localStorage.removeItem('sf4-vq-' + dateStr + '-09');
+    localStorage.removeItem('sf4-vq-' + dateStr + '-15');
+    localStorage.removeItem('sf4-vq-' + dateStr + '-21');
     localStorage.removeItem('sf4-vq-' + old.toISOString().slice(0,10));
   }
 }
 
 function buildVocabQueue(type) {
   let q = getVocabTestWords().filter(w => w.type === type);
-  for (let i = q.length-1; i > 0; i--) {
-    const j = Math.floor(Math.random()*(i+1));
-    [q[i],q[j]] = [q[j],q[i]];
-  }
-  return { ids: q.map(w=>w.id), idx: 0 };
+  // scoreごとにグループ分け
+  const groups = {};
+  q.forEach(w => {
+    const scoreKey = w.score.toFixed(1);
+    if (!groups[scoreKey]) groups[scoreKey] = [];
+    groups[scoreKey].push(w);
+  });
+  // スコアキーを昇順ソート
+  const sortedKeys = Object.keys(groups).sort((a, b) => parseFloat(a) - parseFloat(b));
+  let result = [];
+  sortedKeys.forEach(key => {
+    const group = groups[key];
+    // グループ内をフィッシャー・イェーツシャッフル
+    for (let i = group.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [group[i], group[j]] = [group[j], group[i]];
+    }
+    result = result.concat(group);
+  });
+  return { ids: result.map(w=>w.id), idx: 0 };
 }
 
 function getOrBuildQueues() {
-  const now = new Date();
-  // Only generate new queue after 21:00 for today
   let data = loadVocabQueues();
-  const todayKey = now.toISOString().slice(0,10);
-  const activeKey = getVocabTestDateKey();
-  // If no data for this date OR it's after 21:00 and key is today and no data yet
   if (!data) {
-    if (activeKey === todayKey && now.getHours() >= 21) {
-      // generate fresh queues for today
-      data = {
-        english: buildVocabQueue('english'),
-        classical: buildVocabQueue('classical'),
-      };
-      saveVocabQueues(data);
-    } else if (activeKey !== todayKey) {
-      // before 21:00 - try yesterday's, might not exist yet
-      data = { english:{ids:[],idx:0}, classical:{ids:[],idx:0} };
-    } else {
-      data = { english:{ids:[],idx:0}, classical:{ids:[],idx:0} };
-    }
+    // 各時間スロットのテスト用キューがまだ無ければ自動的に新規生成して保存
+    data = {
+      english: buildVocabQueue('english'),
+      classical: buildVocabQueue('classical'),
+    };
+    saveVocabQueues(data);
   }
   return data;
 }
@@ -2312,8 +2337,6 @@ function renderVocabTestSection(type, data) {
 }
 
 function renderVocabTest(el) {
-  const now = new Date();
-  const isAfter21 = now.getHours() >= 21;
   const data = getOrBuildQueues();
   const enState = data.english||{ids:[],idx:0};
   const clState = data.classical||{ids:[],idx:0};
@@ -2325,8 +2348,8 @@ function renderVocabTest(el) {
   const statusLabel = totalAll===0?'':totalDone>=totalAll
     ? `<span style="color:var(--ac3);font-size:11px;margin-left:6px">✅ 完了</span>`
     : `<span style="color:var(--td);font-size:11px;margin-left:6px">${totalDone}/${totalAll}</span>`;
-  const notYetMsg = !isAfter21 && totalAll===0
-    ? `<div style="font-size:12px;color:var(--td);margin-bottom:12px">21:00以降に今日のテストが生成されます</div>` : '';
+  const notYetMsg = totalAll===0
+    ? `<div style="font-size:12px;color:var(--td);margin-bottom:12px">対象となる復習単語がありません（テストは 9:00、15:00、21:00 に自動更新されます）</div>` : '';
 
   el.innerHTML=`
     <div style="font-size:15px;font-weight:700;margin-bottom:4px">${label}${statusLabel}</div>
@@ -2350,8 +2373,15 @@ function submitVocabTest(knew, event, type){
   if(!w)return;
   const today=new Date().toISOString().slice(0,10);
   if(w.lastTestedAt!==today){
-    if(knew){w.score=Math.min(2.0,Math.round((w.score+0.1)*10)/10);}
-    else{w.score=1.0;}
+    if(knew){
+      w.score=Math.min(2.0,Math.round((w.score+0.1)*10)/10);
+    }else{
+      if(w.score>=1.5){
+        w.score=1.0;
+      }else{
+        w.score=Math.max(0.1,Math.round((w.score-0.1)*10)/10);
+      }
+    }
     w.lastTestedAt=today;
     saveWords();
   }
