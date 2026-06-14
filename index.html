@@ -2161,7 +2161,10 @@ function renderVocabCard(w){
     <div class="vcard" id="vc-${w.id}" onclick="flipVocabCard('${w.id}')">
       <div class="vcard-front">
         <div>
-          <div class="vcard-word">${esc(w.word)}</div>
+          <div class="vcard-word">
+            ${esc(w.word)}
+            ${w.phonetic ? `<span style="font-size:11px;font-weight:normal;color:var(--td);margin-left:6px;letter-spacing:0.5px">${esc(w.phonetic)}</span>` : ''}
+          </div>
           <span class="vcard-type">${w.type==='english'?'英語':'古文'}</span>
           <div style="margin-top:5px;height:3px;border-radius:2px;background:var(--sf3);width:80px">
             <div style="height:100%;width:${bar}%;background:${barColor};border-radius:2px;transition:width .3s"></div>
@@ -2314,12 +2317,16 @@ function renderVocabTestSection(type, data) {
   }
 
   const w = queue[idx];
+  const showPhonetic = type==='english' && w.phonetic;
   return `<div style="margin-bottom:16px">
     <div style="font-size:13px;font-weight:600;margin-bottom:8px">📖 ${typeLabel}テスト
       <span style="font-size:11px;color:var(--td);margin-left:6px">${done}/${total}</span>
     </div>
     <div class="vtest-card" id="vtest-card-${type}" onclick="revealVocabCard('${type}')">
-      <div class="vtest-word">${esc(w.word)}</div>
+      <div class="vtest-word">
+        ${showPhonetic ? `<div style="font-size:13px;font-weight:normal;color:var(--td);margin-bottom:4px;letter-spacing:1px">${esc(w.phonetic)}</div>` : ''}
+        ${esc(w.word)}
+      </div>
       <div style="font-size:12px;color:var(--td)">★${w.score.toFixed(1)}</div>
       <div style="font-size:11px;color:var(--td);margin-top:8px">タップして意味を確認</div>
       <div class="vtest-back">
@@ -2394,13 +2401,17 @@ function submitVocabTest(knew, event, type){
 function openVocabForm(id=null){
   vocabEditId=id;
   document.getElementById('vform-title').textContent=id?'単語を編集':'単語を追加';
-  let word='', type='english', meanings=[{text:'',pos:'名詞'}];
+  let word='', type='english', phonetic='', meanings=[{text:'',pos:'名詞'}];
   if(id){
     const w=WORDS.find(x=>x.id===id);
-    if(w){word=w.word;type=w.type;meanings=w.meanings.length?[...w.meanings]:[{text:'',pos:'名詞'}];}
+    if(w){word=w.word;type=w.type;phonetic=w.phonetic||'';meanings=w.meanings.length?[...w.meanings]:[{text:'',pos:'名詞'}];}
   }
   vocabFormType=type;
   document.getElementById('vf-word').value=word;
+  const pEl=document.getElementById('vf-phonetic');
+  if(pEl) pEl.value=phonetic;
+  const pRow=document.getElementById('vf-phonetic-row');
+  if(pRow) pRow.style.display=type==='english'?'':'none';
   document.getElementById('vf-eng').classList.toggle('active',type==='english');
   document.getElementById('vf-cls').classList.toggle('active',type==='classical');
   renderMeaningRows(meanings);
@@ -2419,6 +2430,8 @@ function setVocabType(t, event){
   document.getElementById('vf-eng').classList.toggle('active',t==='english');
   document.getElementById('vf-cls').classList.toggle('active',t==='classical');
   const r=document.getElementById('vf-spell-result');
+  const pRow=document.getElementById('vf-phonetic-row');
+  if(pRow) pRow.style.display=t==='english'?'':'none';
   if(r && t==='classical') r.textContent='';
   else if(r && t==='english') checkVocabSpelling();
 }
@@ -2464,6 +2477,10 @@ async function checkVocabSpelling(){
       if(Array.isArray(data) && data.length > 0){
         const phonetic = data[0].phonetic || data[0].phonetics?.find(p=>p.text)?.text || '';
         resultEl.innerHTML = `<span style="color:var(--ac3)">✅ 正しいスペルです${phonetic?' <span style="color:var(--td)">'+phonetic+'</span>':''}</span>`;
+        if(phonetic){
+          const pEl = document.getElementById('vf-phonetic');
+          if(pEl) pEl.value = phonetic;
+        }
       } else {
         resultEl.innerHTML = '<span style="color:var(--exp)">❌ 辞書に見つかりません</span>';
       }
@@ -2496,15 +2513,17 @@ function saveVocabWord(){
     pos:r.querySelector('select').value
   })).filter(m=>m.text);
   if(!meanings.length){alert('意味を入力してください');return;}
+  const phonetic = vocabFormType==='english' ? (document.getElementById('vf-phonetic')?.value.trim() || '') : '';
 
   // store pending and show confirm
-  _vocabPending={word, type:vocabFormType, meanings, editId:vocabEditId};
+  _vocabPending={word, type:vocabFormType, phonetic, meanings, editId:vocabEditId};
   const typeLabel=vocabFormType==='english'?'英語':'古文';
   const spellHtml=document.getElementById('vf-spell-result')?.innerHTML||'';
   document.getElementById('vconfirm-body').innerHTML=`
     <div style="background:var(--sf3);border-radius:var(--rs);padding:14px 16px;margin-bottom:10px">
       <div style="font-size:18px;font-weight:700;margin-bottom:4px">${esc(word)}</div>
       <span class="tag">${typeLabel}</span>
+      ${phonetic?`<span class="tag" style="background:var(--sf2);color:var(--td)">${esc(phonetic)}</span>`:''}
       ${spellHtml?`<div style="margin-top:6px;font-size:12px">${spellHtml}</div>`:''}
     </div>
     <div style="font-size:12px;color:var(--td);margin-bottom:6px">意味：</div>
@@ -2522,12 +2541,12 @@ function cancelVocabConfirm(){
 
 function commitVocabWord(){
   if(!_vocabPending)return;
-  const{word,type,meanings,editId}=_vocabPending;
+  const{word,type,phonetic,meanings,editId}=_vocabPending;
   if(editId){
     const w=WORDS.find(x=>x.id===editId);
-    if(w){w.word=word;w.type=type;w.meanings=meanings;}
+    if(w){w.word=word;w.type=type;w.phonetic=phonetic;w.meanings=meanings;}
   } else {
-    WORDS.push({id:gidV(),word,type,createdAt:new Date().toISOString(),
+    WORDS.push({id:gidV(),word,type,phonetic,createdAt:new Date().toISOString(),
       lastTestedAt:null,score:1.0,meanings});
   }
   saveWords();
@@ -4007,6 +4026,10 @@ init();
       <label>単語</label>
       <input id="vf-word" class="fi" placeholder="例: ephemeral / はかなし" spellcheck="true" autocorrect="on" onblur="checkVocabSpelling()">
       <div id="vf-spell-result" style="font-size:12px;margin-top:4px;min-height:18px"></div>
+    </div>
+    <div class="mf" id="vf-phonetic-row">
+      <label>発音記号 (省略可)</label>
+      <input id="vf-phonetic" class="fi" placeholder="例: /ɪˈfem.ər.əl/">
     </div>
     <div class="mf">
       <label>種類</label>
