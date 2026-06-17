@@ -2462,6 +2462,27 @@ function removeMeaningRow(i){
   meanings.splice(i,1);
   renderMeaningRows(meanings);
 }
+async function fetchFromWiktionary(word) {
+  try {
+    const res = await fetch(`https://en.wiktionary.org/api/rest_v1/page/html/${encodeURIComponent(word)}`);
+    if (!res.ok) return null;
+    const htmlText = await res.text();
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(htmlText, 'text/html');
+    const ipaSpans = doc.querySelectorAll('.IPA');
+    for (const span of ipaSpans) {
+      const text = span.textContent.trim();
+      if (text.startsWith('/') && text.endsWith('/')) {
+        return text;
+      }
+    }
+    if (ipaSpans.length > 0) return ipaSpans[0].textContent.trim();
+  } catch(e) {
+    console.warn("Wiktionary fetch failed", e);
+  }
+  return null;
+}
+
 async function checkVocabSpelling(){
   const word = document.getElementById('vf-word')?.value.trim();
   const resultEl = document.getElementById('vf-spell-result');
@@ -2471,29 +2492,55 @@ async function checkVocabSpelling(){
   if(word.includes(' ')){ resultEl.textContent=''; return; }
   resultEl.innerHTML = '<span style="color:var(--td)">🔍 チェック中...</span>';
   try{
+    let phonetic = '';
+    let isCorrectSpell = false;
+    let hint = '';
+
+    // 1. まず Free Dictionary API を叩いてみる
     const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`);
     if(res.ok){
       const data = await res.json();
       if(Array.isArray(data) && data.length > 0){
-        const phonetic = data[0].phonetic || data[0].phonetics?.find(p=>p.text)?.text || '';
-        resultEl.innerHTML = `<span style="color:var(--ac3)">✅ 正しいスペルです${phonetic?' <span style="color:var(--td)">'+phonetic+'</span>':''}</span>`;
-        if(phonetic){
-          const pEl = document.getElementById('vf-phonetic');
-          if(pEl) pEl.value = phonetic;
+        isCorrectSpell = true;
+        // data内のすべてのentryから最初に見つかった phonetic または phonetics.text を探す
+        for (const entry of data) {
+          if (entry.phonetic) {
+            phonetic = entry.phonetic;
+            break;
+          }
+          if (entry.phonetics && Array.isArray(entry.phonetics)) {
+            const found = entry.phonetics.find(p => p.text);
+            if (found && found.text) {
+              phonetic = found.text;
+              break;
+            }
+          }
         }
-      } else {
-        resultEl.innerHTML = '<span style="color:var(--exp)">❌ 辞書に見つかりません</span>';
       }
     } else if(res.status === 404){
-      // API returns suggestions in some cases
-      let hint = '';
       try{
         const errData = await res.json();
         if(errData.message) hint = errData.message;
       }catch(e){}
-      resultEl.innerHTML = `<span style="color:var(--exp)">❌ 辞書に見つかりません${hint?' — '+hint:''}</span>`;
+    }
+
+    // 2. Free Dictionary API で見つからなかった、または発音記号が取れなかった場合、Wiktionary でフォールバック
+    if (!isCorrectSpell || !phonetic) {
+      const wiktionaryPhonetic = await fetchFromWiktionary(word);
+      if (wiktionaryPhonetic) {
+        phonetic = wiktionaryPhonetic;
+        isCorrectSpell = true; // Wiktionaryで見つかったので正しいスペルと見なす
+      }
+    }
+
+    if(isCorrectSpell){
+      resultEl.innerHTML = `<span style="color:var(--ac3)">✅ 正しいスペルです${phonetic?' <span style="color:var(--td)">'+phonetic+'</span>':''}</span>`;
+      if(phonetic){
+        const pEl = document.getElementById('vf-phonetic');
+        if(pEl) pEl.value = phonetic;
+      }
     } else {
-      resultEl.innerHTML = '<span style="color:var(--td)">⚠ チェックできませんでした</span>';
+      resultEl.innerHTML = `<span style="color:var(--exp)">❌ 辞書に見つかりません${hint?' — '+hint:''}</span>`;
     }
   }catch(e){
     resultEl.innerHTML = '<span style="color:var(--td)">⚠ オフライン or エラー</span>';
