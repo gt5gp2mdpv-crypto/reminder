@@ -392,26 +392,31 @@ input[type=checkbox]{accent-color:var(--ac);}
         <span class="cnt" id="cnt-srs" style="background:transparent">0</span>
       </button>
       <div class="nbot">
-
         <button class="nt" style="font-size:12px;padding:8px 10px;gap:6px" onclick="openVocabModal()">
           📚 単語帳
         </button>
         <button class="nt" style="font-size:12px;padding:8px 10px;gap:6px" onclick="openLessonModal()">
           📖 授業設定
         </button>
-        <button class="nt" style="font-size:12px;padding:8px 10px;gap:6px" onclick="openNotifModal()">
-          🔔 通知設定
+        <button class="nt" id="settings-toggle" style="font-size:12px;padding:8px 10px;gap:6px" onclick="toggleSettingsMenu()">
+          ⚙️ その他設定
+          <span class="chev" id="settings-chev" style="transition:transform .2s;margin-left:auto;font-size:10px">▶</span>
         </button>
-        <button class="nt" style="font-size:12px;padding:8px 10px;gap:6px" onclick="exportJSON()">
-          💾 バックアップ
-        </button>
-        <label class="nt" style="font-size:12px;padding:8px 10px;gap:6px;cursor:pointer">
-          📂 復元
-          <input type="file" accept=".json" style="display:none" onchange="importJSON(event)">
-        </label>
-        <button class="nt" style="font-size:12px;padding:8px 10px;gap:6px" onclick="openCloudModal()">
-          ☁️ クラウド設定
-        </button>
+        <div id="settings-submenu" style="display:none;padding-left:12px;flex-direction:column;gap:2px">
+          <button class="nt" style="font-size:11px;padding:7px 10px;gap:6px" onclick="openNotifModal()">
+            🔔 通知設定
+          </button>
+          <button class="nt" style="font-size:11px;padding:7px 10px;gap:6px" onclick="exportJSON()">
+            💾 バックアップ
+          </button>
+          <label class="nt" style="font-size:11px;padding:7px 10px;gap:6px;cursor:pointer">
+            📂 復元
+            <input type="file" accept=".json" style="display:none" onchange="importJSON(event)">
+          </label>
+          <button class="nt" style="font-size:11px;padding:7px 10px;gap:6px" onclick="openCloudModal()">
+            ☁️ クラウド設定
+          </button>
+        </div>
       </div>
       <div class="syncs" id="syncs" style="display:none"></div>
     </nav>
@@ -987,7 +992,7 @@ function togglePushServer(){
 function urlBase64ToUint8Array(base64String){
   const padding='='.repeat((4-base64String.length%4)%4);
   const base64=(base64String+padding).replace(/-/g,'+').replace(/_/g,'/');
-  const raw=window.atob(base64);
+  const raw=window.atob(base64String);
   return Uint8Array.from([...raw].map(c=>c.charCodeAt(0)));
 }
 
@@ -1361,6 +1366,11 @@ function closeNav(){
   document.getElementById('nav').classList.remove('open');
   document.getElementById('nov').classList.remove('show');
   document.getElementById('hbg').classList.remove('open');
+  // サブメニューも閉じる
+  const submenu = document.getElementById('settings-submenu');
+  const chev = document.getElementById('settings-chev');
+  if(submenu) submenu.style.display = 'none';
+  if(chev) chev.style.transform = 'rotate(0deg)';
 }
 function sw(tab){
   P.forEach(p=>{p.expanded=false;});
@@ -1368,6 +1378,14 @@ function sw(tab){
   closeBSAll();
   document.querySelectorAll('.nt').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
   closeNav();render();
+}
+function toggleSettingsMenu(){
+  const submenu = document.getElementById('settings-submenu');
+  const chev = document.getElementById('settings-chev');
+  if(!submenu || !chev) return;
+  const isOpen = submenu.style.display === 'block';
+  submenu.style.display = isOpen ? 'none' : 'block';
+  chev.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(90deg)';
 }
 
 // ════════════════════════════════
@@ -1449,7 +1467,7 @@ function generateRepeatSubtasks(p){
   p.subtasks.sort((a,b)=>{
     if(a._repeat&&b._repeat)return new Date(a.deadline)-new Date(b.deadline);
     if(a._repeat)return-1;
-    if(b._repeat)return 1;
+    if(b._repeat) return 1;
     return 0;
   });
   rep.generatedUntil=from.toISOString();
@@ -1636,7 +1654,7 @@ function leafProg(node){
 // ════════════════════════════════
 //  RENDER HELPERS
 // ════════════════════════════════
-function esc(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function esc(s){return(s||'').replace(/&/g,'&').replace(/</g,'<').replace(/>/g,'>').replace(/"/g,'"');}
 
 function renderFieldTags(sub){
   const f=sub.fields||{};
@@ -1839,38 +1857,7 @@ function renderS(s,rootId){
 
 // ════════════════════════════════
 //  BOTTOM SHEET
-// addSInBS: used when adding tasks from within a bottom sheet
-function addSInBS(){
-  if(!formTarget)return;
-  const{rootId,parentId}=formTarget;
-  const title=document.getElementById('sf-ti')?.value.trim()||'';
-  const relVisible=document.getElementById('dl-rel')?.classList.contains('show');
-  let dl='';
-  if(relVisible){dl=formTarget.computedDL||document.getElementById('sf-dl-rel')?.value||'';}
-  else{dl=document.getElementById('sf-dl')?.value||'';}
-  const tot=Math.max(1,parseInt(document.getElementById('sf-tot')?.value)||1);
-  const subject=document.getElementById('sf-sub')?.value.trim()||'';
-  const fields={};
-  formFields.forEach(fid=>{const el=document.getElementById(`ff-${fid}`);if(el&&el.value.trim())fields[fid]=el.value.trim();});
-  const srsOn=document.getElementById('sf-srs')?.checked||false;
-  const sub={id:gid(),title,subject,fields,deadline:dl||null,totalItems:tot,progress:0,done:false,subtasks:[],expanded:false,srsActive:srsOn,reps:0,interval:1,ef:2.5,dueDate:null};
-  const r=P.find(x=>x.id===rootId);if(!r)return;
-  if(parentId===rootId){r.subtasks.push(sub);}
-  else{const pn=find(parentId,r.subtasks||[]);if(pn){pn.subtasks=pn.subtasks||[];pn.subtasks.push(sub);}}
-  saveL();closeForm();formFields=new Set();
-  setTimeout(()=>{
-    if(bsStack.length===0)return;
-    if(document.getElementById('bs2').classList.contains('show')){
-      const frame=bsStack[bsStack.length-1];
-      const s=find(frame.subtaskId,r.subtasks||[]);
-      if(s)renderBS2(s,frame.parentId);
-    } else {
-      renderBS1(r);
-    }
-  },50);
-}
 // ════════════════════════════════
-// bsStack: [{parentId, subtaskId(for bs2)}]
 let bsStack=[];
 
 function openBS(parentId, event){
@@ -4299,11 +4286,18 @@ init();
       以下の手順で Firebase プロジェクトを作成し、設定値を入力してください。
     </p>
     <p class="mnote">
-      <strong>①</strong> <a href="https://console.firebase.google.com" target="_blank">Firebase Console</a> にアクセス<br>
-      <strong>②</strong> プロジェクトを作成（無料）<br>
-      <strong>③</strong> 「Authentication」→「Sign-in method」→「匿名」を有効化<br>
-      <strong>④</strong> 「Firestore Database」→「データベースを作成」（テストモード）<br>
-      <strong>⑤</strong> 「プロジェクトの設定」→「構成ファイル」→ firebaseConfig の値をコピー
+      <strong>①</strong> <a href="https://console.firebase.google.com" target="_blank">Firebase Console</a> にアクセスしてログイン<br>
+      <strong>②</strong> 「プロジェクトを追加」をクリック → プロジェクト名を入力 → 作成<br>
+      <strong>③</strong> 左メニューの「Authentication」→「Sign-in method」→「匿名」を有効化<br>
+      <strong>④</strong> 左メニューの「Firestore Database」→「データベースを作成」→ テストモードで開始<br>
+      <strong>⑤</strong> プロジェクト設定（歯車アイコン）→「全般」→「アプリを追加」→「Web」を選択<br>
+      <strong>⑥</strong> アプリ名を入力 → 「firebaseConfig」の値が表示されるのでコピー<br>
+      <strong>⑦</strong> 下記の各項目に firebaseConfig の値を貼り付けてください
+    </p>
+    <p class="mnote" style="background:rgba(249,226,175,.08);border:1px solid rgba(249,226,175,.2);border-radius:var(--rs);padding:10px;color:var(--wrn)">
+      ⚠️ <strong>注意：</strong>Firestore Database は「テストモード」で開始してください。<br>
+      後で「本番環境のルール」に変更することをお勧めします。<br>
+      また、Authentication の「匿名」ログインを有効にしてください。
     </p>
     <div class="mf"><label>API Key</label><input id="cloud-apiKey" type="text" placeholder="AIzaSy..."></div>
     <div class="mf"><label>Auth Domain</label><input id="cloud-authDomain" type="text" placeholder="your-project.firebaseapp.com"></div>
