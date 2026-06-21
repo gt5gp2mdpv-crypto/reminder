@@ -1364,6 +1364,14 @@ function toggleNav(){
   nov.classList.toggle('show',open);
   hbg.classList.toggle('open',open);
 }
+function openNav(){
+  const nav=document.getElementById('nav');
+  const nov=document.getElementById('nov');
+  const hbg=document.getElementById('hbg');
+  nav.classList.add('open');
+  nov.classList.add('show');
+  hbg.classList.add('open');
+}
 function closeNav(){
   document.getElementById('nav').classList.remove('open');
   document.getElementById('nov').classList.remove('show');
