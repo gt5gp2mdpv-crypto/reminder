@@ -3,8 +3,10 @@
 
 let scheduledTimers = [];
 
-self.addEventListener('install', () => self.skipWaiting());
-self.addEventListener('activate', e => e.waitUntil(clients.claim()));
+// 自動更新によるページリロードを防ぐため、skipWaitingは使用しない
+// 新しいSWは次回のページ読み込み時に有効になる
+self.addEventListener('install', () => {});
+self.addEventListener('activate', () => {});
 
 // ── Legacy Push handler (fallback for iOS < 18.4 and Android) ──
 // Declarative Web Push bypasses this entirely - OS renders directly

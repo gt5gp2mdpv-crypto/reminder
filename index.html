@@ -1297,14 +1297,16 @@ async function init(){
   setInterval(()=>{updateClock();updateDeadlineBadgesOnly();},30000);
   updateClock();
   registerSW();
-  // initial cloud sync on startup
-  setTimeout(()=>{syncToCloud();},3000);
+  // initial cloud sync on startup (only if configured)
+  if (cloudCfg) {
+    setTimeout(() => { syncToCloud(); }, 3000);
+  }
   loadNotifSettings();
   // reschedule notifications on load
   refreshAllRepeats();
-  setTimeout(()=>{
+  setTimeout(() => {
     scheduleAllNotifications();
-  },2000);
+  }, 2000);
   // Swipe left from right edge to open nav
   (()=>{
     let sx=0,sy=0;
@@ -4179,33 +4181,46 @@ function validateCloudConfig(cfg) {
   return true;
 }
 
+let firebaseLoading = false;
+let firebaseLoadPromise = null;
+
 async function loadFirebaseSDK() {
-  if (window.firebaseApp) return;
-  // Dynamically load Firebase modules from CDN (compat for simplicity)
-  const scripts = [
-    'https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js',
-    'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js',
-    'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js',
-  ];
-  for (const src of scripts) {
-    if (!document.querySelector(`script[src="${src}"]`)) {
-      await new Promise((resolve, reject) => {
-        const s = document.createElement('script');
-        s.src = src;
-        s.onload = resolve;
-        s.onerror = reject;
-        document.head.appendChild(s);
-      });
+  if (window.firebaseApp) return window.firebaseApp;
+  if (firebaseLoadPromise) return firebaseLoadPromise; // 重複読み込み防止
+  firebaseLoading = true;
+  firebaseLoadPromise = (async () => {
+    // Dynamically load Firebase modules from CDN (compat for simplicity)
+    const scripts = [
+      'https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js',
+      'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js',
+      'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js',
+    ];
+    for (const src of scripts) {
+      if (!document.querySelector(`script[src="${src}"]`)) {
+        await new Promise((resolve, reject) => {
+          const s = document.createElement('script');
+          s.src = src;
+          s.onload = resolve;
+          s.onerror = reject;
+          document.head.appendChild(s);
+        });
+      }
     }
+    window.firebaseApp = firebase.initializeApp({
+      apiKey: cloudCfg.apiKey,
+      authDomain: cloudCfg.authDomain,
+      projectId: cloudCfg.projectId,
+      storageBucket: cloudCfg.storageBucket || undefined,
+      messagingSenderId: cloudCfg.messagingSenderId || undefined,
+      appId: cloudCfg.appId || undefined,
+    });
+    return window.firebaseApp;
+  })();
+  try {
+    return await firebaseLoadPromise;
+  } finally {
+    firebaseLoading = false;
   }
-  window.firebaseApp = firebase.initializeApp({
-    apiKey: cloudCfg.apiKey,
-    authDomain: cloudCfg.authDomain,
-    projectId: cloudCfg.projectId,
-    storageBucket: cloudCfg.storageBucket || undefined,
-    messagingSenderId: cloudCfg.messagingSenderId || undefined,
-    appId: cloudCfg.appId || undefined,
-  });
 }
 
 async function ensureFirebaseAuth() {
@@ -4223,8 +4238,16 @@ async function syncToCloud(force = false) {
   if (cloudSyncing) return;
   cloudSyncing = true;
   updateSyncStatus();
+  // タイムアウト: 30秒経過したら強制的に終了
+  let timedOut = false;
+  const timeoutId = setTimeout(() => {
+    timedOut = true;
+    cloudSyncing = false;
+    updateSyncStatus();
+  }, 30000);
   try {
     await ensureFirebaseAuth();
+    if (timedOut) return;
     const db = firebase.firestore();
     const uid = firebase.auth().currentUser.uid;
     const docRef = db.collection('studyflowData').doc(uid);
@@ -4259,13 +4282,12 @@ async function syncToCloud(force = false) {
     updateSyncStatus();
   } catch (e) {
     console.warn('[Cloud Sync] Error:', e);
-    if (e.code === 'failed-precondition' || e.message?.includes('Failed to get document')) {
-      // Firestore not created - ignore silently
-    } else {
-      updateSyncStatus();
-    }
+    // エラー時も必ずステータスを更新
+    updateSyncStatus();
   } finally {
+    clearTimeout(timeoutId);
     cloudSyncing = false;
+    updateSyncStatus();
   }
 }
 
@@ -4288,16 +4310,24 @@ init();
     <p class="mnote">
       <strong>①</strong> <a href="https://console.firebase.google.com" target="_blank">Firebase Console</a> にアクセスしてログイン<br>
       <strong>②</strong> 「プロジェクトを追加」をクリック → プロジェクト名を入力 → 作成<br>
-      <strong>③</strong> 左メニューの「Authentication」→「Sign-in method」→「匿名」を有効化<br>
-      <strong>④</strong> 左メニューの「Firestore Database」→「データベースを作成」→ テストモードで開始<br>
-      <strong>⑤</strong> プロジェクト設定（歯車アイコン）→「全般」→「アプリを追加」→「Web」を選択<br>
-      <strong>⑥</strong> アプリ名を入力 → 「firebaseConfig」の値が表示されるのでコピー<br>
-      <strong>⑦</strong> 下記の各項目に firebaseConfig の値を貼り付けてください
+      <strong>③</strong> プロジェクトダッシュボードで左側のメニューから「<strong>Authentication</strong>」を探してクリック → 「Sign-in method」タブ → 「匿名」を有効化<br>
+      <strong>④</strong> 左側のメニューから「<strong>Firestore Database</strong>」を探してクリック（Realtime Database ではなく Firestore Database を選択）→ 「データベースを作成」をクリック<br>
+      <strong style="color:var(--ac2)">　→ エディション選択：「Standard エディション」を選択</strong><br>
+      <strong style="color:var(--ac2)">　→ セキュリティルール選択：「テストモードで開始」を選択</strong><br>
+      <strong style="color:var(--ac2)">　→ ロケーション選択：最も近いロケーション（例：asia-northeast1 = 東京）</strong><br>
+      <strong style="color:var(--ac2)">　→ 「データベースを作成」をクリック</strong><br>
+      <strong>⑤</strong> 右上の歯車アイコン（プロジェクト設定）→ 「全般」タブ → 下にスクロール → 「Your apps」セクションの「アプリを追加」→ 「Web」アイコン（</>）を選択<br>
+      <strong>⑥</strong> アプリ名を入力 → 「このアプリのFirebase Hostingも設定します」の<strong>チェックを外す</strong> → 「アプリを登録」をクリック<br>
+      <strong style="color:var(--ac2)">　→ 表示された「firebaseConfig」の値をコピー（前後の引用符"は削除）</strong><br>
+      <strong>⑦</strong> 下記の各項目に firebaseConfig の値を貼り付けてください（値だけを入力、引用符は不要）
     </p>
     <p class="mnote" style="background:rgba(249,226,175,.08);border:1px solid rgba(249,226,175,.2);border-radius:var(--rs);padding:10px;color:var(--wrn)">
-      ⚠️ <strong>注意：</strong>Firestore Database は「テストモード」で開始してください。<br>
-      後で「本番環境のルール」に変更することをお勧めします。<br>
-      また、Authentication の「匿名」ログインを有効にしてください。
+      <strong>⚠️ 重要な注意点：</strong><br>
+      ・ Firestore Database は「Standard エディション」を選択（Enterprise は有料です）<br>
+      ・ セキュリティルールは「テストモードで開始」を選択してください<br>
+      ・ 「このアプリのFirebase Hostingも設定します」は<strong>チェックを外す</strong><br>
+      ・ Authentication の「匿名」ログインを有効にしてください<br>
+      ・ firebaseConfig からコピーする際は、前後の <strong>"</strong> を削除してください
     </p>
     <div class="mf"><label>API Key</label><input id="cloud-apiKey" type="text" placeholder="AIzaSy..."></div>
     <div class="mf"><label>Auth Domain</label><input id="cloud-authDomain" type="text" placeholder="your-project.firebaseapp.com"></div>
