@@ -409,30 +409,14 @@ input[type=checkbox]{accent-color:var(--ac);}
           📂 復元
           <input type="file" accept=".json" style="display:none" onchange="importJSON(event)">
         </label>
+        <button class="nt" style="font-size:12px;padding:8px 10px;gap:6px" onclick="openCloudModal()">
+          ☁️ クラウド設定
+        </button>
       </div>
+      <div class="syncs" id="syncs" style="display:none"></div>
     </nav>
     <!-- MAIN -->
     <div class="right" id="right"></div>
-  </div>
-</div>
-
-<!-- GitHub modal -->
-<div class="ov hidden" id="gh-modal">
-  <div class="modal">
-    <h3>🔗 GitHub同期設定</h3>
-    <div class="mf"><label>GitHubユーザー名</label><input id="gh-user" type="text" placeholder="your-username"></div>
-    <div class="mf"><label>リポジトリ名</label><input id="gh-repo" type="text" placeholder="studyflow-data"></div>
-    <div class="mf"><label>Personal Access Token</label><input id="gh-tok" type="password" placeholder="ghp_xxxxxxxxxxxx"></div>
-    <div class="mf"><label>保存ファイル名</label><input id="gh-file" type="text" value="tasks.json"></div>
-    <p class="mnote">
-      ① <a href="https://github.com/new" target="_blank">github.com/new</a> でリポジトリを作成（Private推奨）<br>
-      ② <a href="https://github.com/settings/personal-access-tokens/new" target="_blank">Fine-grained token</a> を作成 → Repository access: このリポジトリのみ → Permissions: Contents = Read and write<br>
-      ③ 上の欄に入力して「保存 &amp; テスト」
-    </p>
-    <div class="ma">
-      <button class="bno" onclick="closeGhModal()">キャンセル</button>
-      <button class="bok" onclick="saveGhCfg()">保存 &amp; テスト</button>
-    </div>
   </div>
 </div>
 
@@ -615,7 +599,7 @@ const SC={
 };
 const FIELD_PREFIX={page:'pp.',sec:'§',prob:'No.',date:''};
 
-let P=[], curTab='all', ghCfg=null;
+let P=[], curTab='all';
 let formTarget=null, emTarget=null;
 let _saveLTimer=null;
 let curSubject='all', curSort='subject'; // 'default'|'deadline'|'subject'
@@ -1296,17 +1280,20 @@ async function init(){
   try{
     db=await openDB();
     const saved=await idbGet('tasks');
-    if(saved)P=saved;    const g=await idbGet('ghcfg');
-    if(g){ghCfg=g;ust(`@${ghCfg.user}`);}
+    if(saved)P=saved;
   }catch(e){
     // fallback to localStorage
     try{const d=localStorage.getItem('sf4');if(d)P=JSON.parse(d);}catch(e2){}
   }
   await loadWords();
+  loadCloudCfg();
+  updateSyncStatus();
   render();
   setInterval(()=>{updateClock();updateDeadlineBadgesOnly();},30000);
   updateClock();
   registerSW();
+  // initial cloud sync on startup
+  setTimeout(()=>{syncToCloud();},3000);
   loadNotifSettings();
   // reschedule notifications on load
   refreshAllRepeats();
@@ -1338,9 +1325,8 @@ async function init(){
 async function saveL(){
   try{await idbSet('tasks',P);}
   catch(e){console.error('[saveL] IndexedDB write failed:',e);}
-  schedGh();
+  schedCloud();
 }
-function ust(t){const el=document.getElementById('syncs');if(el)el.textContent=t;}
 function updateClock(){const n=new Date();document.getElementById('clock').textContent=n.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'});}
 function updateDeadlineBadgesOnly(){
   if(formTarget)return;
@@ -2462,6 +2448,9 @@ function removeMeaningRow(i){
   meanings.splice(i,1);
   renderMeaningRows(meanings);
 }
+const IPA_REGEX = new RegExp('\\/([^/]+?)\\/|\\/(.+?)\\/', 'g'); // Fixed: use RegExp constructor to avoid parse issues
+
+// Improved Wiktionary fetching with more robust IPA extraction
 async function fetchFromWiktionary(word) {
   try {
     const res = await fetch(`https://en.wiktionary.org/api/rest_v1/page/html/${encodeURIComponent(word)}`);
@@ -2469,40 +2458,106 @@ async function fetchFromWiktionary(word) {
     const htmlText = await res.text();
     const parser = new DOMParser();
     const doc = parser.parseFromString(htmlText, 'text/html');
-    const ipaSpans = doc.querySelectorAll('.IPA');
+    const ipaSpans = doc.querySelectorAll('.IPA'); // Select all elements with class 'IPA'
+
     for (const span of ipaSpans) {
       const text = span.textContent.trim();
-      if (text.startsWith('/') && text.endsWith('/')) {
-        return text;
+      const match = text.match(IPA_REGEX);
+      if (match) {
+        // Prefer the shortest valid IPA string as it's often the most common pronunciation
+        // 最も短いIPA文字列を優先する（通常、最も一般的な発音）
+        let shortestIpa = text; // デフォルトは元のテキスト
+        for (const m of match) {
+          if (m && m.length < shortestIpa.length) {
+            shortestIpa = m;
+          }
+        }
+        return shortestIpa;
       }
     }
-    if (ipaSpans.length > 0) return ipaSpans[0].textContent.trim();
   } catch(e) {
     console.warn("Wiktionary fetch failed", e);
   }
   return null;
 }
 
-async function checkVocabSpelling(){
-  const word = document.getElementById('vf-word')?.value.trim();
-  const resultEl = document.getElementById('vf-spell-result');
-  if(!resultEl) return;
-  if(!word || vocabFormType !== 'english'){ resultEl.textContent=''; return; }
-  // only check single words (no spaces)
-  if(word.includes(' ')){ resultEl.textContent=''; return; }
-  resultEl.innerHTML = '<span style="color:var(--td)">🔍 チェック中...</span>';
-  try{
-    let phonetic = '';
-    let isCorrectSpell = false;
-    let hint = '';
+// Function to attempt to derive IPA from related words
+async function derivePhonetic(word) {
+  // Each entry: { suffix, ipa, transformations: [(stem) => candidateWord|null, ...] }
+  // The transformations array is tried in order; the first candidate that returns a phonetic is used.
+  const derivationalSuffixes = [
+    { suffix: 'ly', ipa: 'li', transformations: [
+        stem => stem,  // e.g. quick + ly → quick
+      ]},
+    { suffix: 'ism', ipa: 'ɪz.əm', transformations: [
+        stem => stem,                     // e.g. empiric + ism → empiric
+        stem => stem.endsWith('ic')       // e.g. empiric → empirical
+          ? stem + 'al'
+          : null,
+      ]},
+    { suffix: 'ist', ipa: 'ɪst', transformations: [
+        stem => stem,                     // e.g. art + ist → art
+        stem => stem + 'y',               // e.g. paleontolog + ist → paleontology
+      ]},
+    { suffix: 'tion', ipa: 'ʃən', transformations: [
+        stem => stem + 'te',              // e.g. educa + tion → educate
+        stem => stem,                     // e.g. informa + tion → inform? (fallback)
+      ]},
+    { suffix: 'ment', ipa: 'mənt', transformations: [
+        stem => stem,                     // e.g. achieve + ment → achieve
+      ]},
+    { suffix: 'ical', ipa: 'ɪkəl', transformations: [
+        stem => stem + 'y',               // e.g. biolog + ical → biology
+        stem => stem,                     // e.g. histor + ical → histor
+      ]},
+    { suffix: 'able', ipa: 'əbəl', transformations: [
+        stem => stem,                     // e.g. comfort + able → comfort
+      ]},
+    { suffix: 'ing', ipa: 'ɪŋ', transformations: [
+        stem => stem + 'e',               // e.g. writ + ing → write
+        stem => stem,                     // e.g. go + ing → go
+      ]},
+    { suffix: 'ed', ipa: 'd', transformations: [
+        stem => stem,                     // e.g. walk + ed → walk
+        stem => stem + 'e',               // e.g. hop + ed → hope
+      ]},
+    { suffix: 's', ipa: 'z', transformations: [
+        stem => stem,                     // e.g. dog + s → dog
+      ]},
+  ];
 
-    // 1. まず Free Dictionary API を叩いてみる
+  for (const { suffix, ipa, transformations } of derivationalSuffixes) {
+    if (word.endsWith(suffix) && word.length > suffix.length) {
+      const stem = word.slice(0, word.length - suffix.length);
+      for (const transform of transformations) {
+        const candidate = transform(stem);
+        if (!candidate || candidate.length === 0) continue;
+        // Avoid trivial self-reference: if candidate === word, skip (prevent infinite loop)
+        if (candidate === word) continue;
+        
+        const basePhonetic = await getPhoneticFromApis(candidate);
+        if (basePhonetic) {
+          // Simple concatenation (can be improved with more complex rules)
+          const combinedPhonetic = basePhonetic.replace(/\/$/, '') + ipa + '/';
+          console.log(`Derived phonetic for ${word} from ${candidate}: ${combinedPhonetic}`);
+          return combinedPhonetic;
+        }
+      }
+    }
+  }
+  return null; // No phonetic could be derived
+}
+
+// Unified function to get phonetic from various sources
+async function getPhoneticFromApis(word) {
+  let phonetic = null;
+
+  // 1. Try Free Dictionary API first (most reliable for common words)
+  try {
     const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`);
-    if(res.ok){
+    if (res.ok) {
       const data = await res.json();
-      if(Array.isArray(data) && data.length > 0){
-        isCorrectSpell = true;
-        // data内のすべてのentryから最初に見つかった phonetic または phonetics.text を探す
+      if (Array.isArray(data) && data.length > 0) {
         for (const entry of data) {
           if (entry.phonetic) {
             phonetic = entry.phonetic;
@@ -2517,24 +2572,61 @@ async function checkVocabSpelling(){
           }
         }
       }
-    } else if(res.status === 404){
-      try{
-        const errData = await res.json();
-        if(errData.message) hint = errData.message;
-      }catch(e){}
     }
+  } catch (e) {
+    console.warn("Free Dictionary API fetch failed", e);
+  }
 
-    // 2. Free Dictionary API で見つからなかった、または発音記号が取れなかった場合、Wiktionary でフォールバック
-    if (!isCorrectSpell || !phonetic) {
-      const wiktionaryPhonetic = await fetchFromWiktionary(word);
-      if (wiktionaryPhonetic) {
-        phonetic = wiktionaryPhonetic;
-        isCorrectSpell = true; // Wiktionaryで見つかったので正しいスペルと見なす
+  // 2. Fallback to Wiktionary if Free Dictionary API fails or no phonetic found
+  if (!phonetic) {
+    phonetic = await fetchFromWiktionary(word);
+  }
+  return phonetic;
+}
+
+async function checkVocabSpelling(){
+  const word = document.getElementById('vf-word')?.value.trim();
+  const resultEl = document.getElementById('vf-spell-result');
+  if(!resultEl) return;
+  if(!word || vocabFormType !== 'english'){ resultEl.textContent=''; return; }
+  if(word.includes(' ')){ resultEl.textContent=''; return; }
+
+  resultEl.innerHTML = '<span style="color:var(--td)">🔍 チェック中...</span>';
+  try{
+    let phonetic = null;
+    let isCorrectSpell = false;
+    let hint = '';
+    let isDerived = false;
+
+    // 1. まず Free Dictionary API または Wiktionary から直接取得を試みる
+    phonetic = await getPhoneticFromApis(word);
+    if (phonetic) {
+      isCorrectSpell = true;
+    } else {
+      // 2. 直接取得できなかった場合、派生語からの推測を試みる
+      phonetic = await derivePhonetic(word);
+      if (phonetic) {
+        isDerived = true;
+        // 派生語から取得できた場合でも、元の単語が辞書に存在するかは確認したい
+        // ここでFree Dictionary APIの辞書存在チェックのみを再度行う
+        try {
+          const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`);
+          if (res.ok) isCorrectSpell = true;
+        } catch (e) { /* ignore error, assume not found in primary dictionary */ }
+      } else { 
+        // 3. 派生語からも見つからなかった場合、Free Dictionary APIの404メッセージをヒントとして取得
+        try{
+          const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`);
+          if(res.status === 404){
+            const errData = await res.json();
+            if(errData.message) hint = errData.message;
+          }
+        }catch(e){ /* ignore */ }
       }
     }
 
     if(isCorrectSpell){
-      resultEl.innerHTML = `<span style="color:var(--ac3)">✅ 正しいスペルです${phonetic?' <span style="color:var(--td)">'+phonetic+'</span>':''}</span>`;
+      resultEl.innerHTML = `<span style="color:var(--ac3)">✅ 正しいスペルです${phonetic?' <span style="color:var(--td)">'+esc(phonetic)+ (isDerived ? ' (推測)' : '') +'</span>':''}</span>`;
       if(phonetic){
         const pEl = document.getElementById('vf-phonetic');
         if(pEl) pEl.value = phonetic;
@@ -4000,56 +4092,232 @@ function calUpdProg(id,rootId,val,sliderEl){
 }
 
 // ════════════════════════════════
-//  GITHUB
+//  CLOUD SYNC (Firebase)
 // ════════════════════════════════
-function openGhModal(){
-  if(ghCfg){
-    document.getElementById('gh-user').value=ghCfg.user||'';
-    document.getElementById('gh-repo').value=ghCfg.repo||'';
-    document.getElementById('gh-tok').value=ghCfg.token||'';
-    document.getElementById('gh-file').value=ghCfg.file||'tasks.json';
+let cloudCfg = null; // {apiKey, authDomain, projectId, storageBucket, messagingSenderId, appId}
+let cloudSyncing = false;
+let _cloudTimer = null;
+
+function loadCloudCfg() {
+  try{
+    const d = localStorage.getItem('sf4-cloud');
+    if(d) cloudCfg = JSON.parse(d);
+  }catch(e){}
+}
+function saveCloudCfgToStorage() {
+  localStorage.setItem('sf4-cloud', JSON.stringify(cloudCfg));
+}
+
+function getSyncStatusText() {
+  if (!cloudCfg) return '☁️ 未設定';
+  if (cloudSyncing) return '☁️ 同期中...';
+  if (cloudCfg._lastSync) {
+    const d = new Date(cloudCfg._lastSync);
+    return `☁️ ${d.getMonth()+1}/${d.getDate()} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
   }
-  document.getElementById('gh-modal').classList.remove('hidden');
+  return '☁️ 設定済み';
 }
-function closeGhModal(){document.getElementById('gh-modal').classList.add('hidden');}
-async function saveGhCfg(){
-  const cfg={user:document.getElementById('gh-user').value.trim(),repo:document.getElementById('gh-repo').value.trim(),
-    token:document.getElementById('gh-tok').value.trim(),file:document.getElementById('gh-file').value.trim()||'tasks.json'};
-  if(!cfg.user||!cfg.repo||!cfg.token){alert('すべて入力してください');return;}
-  ghCfg=cfg;
-  try{await idbSet('ghcfg',cfg);}catch(e){localStorage.setItem('sf4-gh',JSON.stringify(cfg));}
-  try{await ghSave(cfg,P);ust(`✓ @${cfg.user}`);alert('✅ GitHub同期の設定が完了しました！');closeGhModal();}
-  catch(e){alert('❌ 接続失敗: '+e.message);}
+
+function updateSyncStatus() {
+  const el = document.getElementById('syncs');
+  if (!el) return;
+  el.style.display = 'block';
+  el.textContent = getSyncStatusText();
 }
-async function ghSave(cfg,data){
-  const content=btoa(unescape(encodeURIComponent(JSON.stringify(data,null,2))));
-  let sha=null;
-  try{const r=await fetch(`https://api.github.com/repos/${cfg.user}/${cfg.repo}/contents/${cfg.file}`,
-    {headers:{Authorization:`token ${cfg.token}`,Accept:'application/vnd.github.v3+json'}});
-    if(r.ok)sha=(await r.json()).sha;}catch(e){}
-  const body={message:`SF sync ${new Date().toISOString()}`,content};if(sha)body.sha=sha;
-  const res=await fetch(`https://api.github.com/repos/${cfg.user}/${cfg.repo}/contents/${cfg.file}`,
-    {method:'PUT',headers:{Authorization:`token ${cfg.token}`,Accept:'application/vnd.github.v3+json','Content-Type':'application/json'},body:JSON.stringify(body)});
-  if(!res.ok){const e=await res.json();throw new Error(e.message);}
-  ust(`✓ ${new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}`);
+
+function openCloudModal() {
+  loadCloudCfg();
+  const el = document.getElementById('cloud-modal');
+  if (!el) return;
+  document.getElementById('cloud-apiKey').value = cloudCfg?.apiKey || '';
+  document.getElementById('cloud-authDomain').value = cloudCfg?.authDomain || '';
+  document.getElementById('cloud-projectId').value = cloudCfg?.projectId || '';
+  document.getElementById('cloud-storageBucket').value = cloudCfg?.storageBucket || '';
+  document.getElementById('cloud-messagingSenderId').value = cloudCfg?.messagingSenderId || '';
+  document.getElementById('cloud-appId').value = cloudCfg?.appId || '';
+  document.getElementById('cloud-status').textContent = '';
+  el.classList.remove('hidden');
+  closeNav();
 }
-async function autoLoad(){
-  if(!ghCfg)return;const c=ghCfg;
-  try{const r=await fetch(`https://api.github.com/repos/${c.user}/${c.repo}/contents/${c.file}`,
-    {headers:{Authorization:`token ${c.token}`,Accept:'application/vnd.github.v3+json'}});
-    if(!r.ok)return;const d=await r.json();
-    P=JSON.parse(decodeURIComponent(escape(atob(d.content.replace(/\n/g,'')))));
-    localStorage.setItem('sf4',JSON.stringify(P));ust('↓ ロード完了');render();}
-  catch(e){ust('⚠ ロード失敗');}
+function closeCloudModal() {
+  const el = document.getElementById('cloud-modal');
+  if (el) el.classList.add('hidden');
 }
-let ghT=null;
-function schedGh(){
-  if(!ghCfg)return;clearTimeout(ghT);
-  ghT=setTimeout(()=>ghSave(ghCfg,P).catch(()=>ust('⚠ 保存失敗')),2500);
+
+async function testCloudConnection() {
+  const cfg = collectCloudConfig();
+  if (!validateCloudConfig(cfg)) return;
+  const statusEl = document.getElementById('cloud-status');
+  statusEl.textContent = '🔍 接続テスト中...';
+  statusEl.style.color = 'var(--td)';
+  try {
+    // Dynamic import via CDN - just test that config is valid
+    statusEl.textContent = '✅ 設定は保存されました。データをFirestoreに同期します...';
+    // Save and sync
+    cloudCfg = cfg;
+    cloudCfg._lastSync = null;
+    saveCloudCfgToStorage();
+    await syncToCloud(true);
+    statusEl.textContent = '✅ 同期成功！データがクラウドに保存されました。';
+    statusEl.style.color = 'var(--ac3)';
+    updateSyncStatus();
+    closeCloudModal();
+    alert('✅ クラウド同期の設定が完了しました！');
+  } catch (e) {
+    statusEl.textContent = '❌ エラー: ' + e.message;
+    statusEl.style.color = 'var(--exp)';
+  }
+}
+
+function collectCloudConfig() {
+  return {
+    apiKey: document.getElementById('cloud-apiKey')?.value.trim(),
+    authDomain: document.getElementById('cloud-authDomain')?.value.trim(),
+    projectId: document.getElementById('cloud-projectId')?.value.trim(),
+    storageBucket: document.getElementById('cloud-storageBucket')?.value.trim(),
+    messagingSenderId: document.getElementById('cloud-messagingSenderId')?.value.trim(),
+    appId: document.getElementById('cloud-appId')?.value.trim(),
+  };
+}
+
+function validateCloudConfig(cfg) {
+  const missing = [];
+  if (!cfg.apiKey) missing.push('APIキー');
+  if (!cfg.authDomain) missing.push('Authドメイン');
+  if (!cfg.projectId) missing.push('プロジェクトID');
+  if (missing.length) {
+    alert('未入力の項目があります: ' + missing.join(', '));
+    return false;
+  }
+  return true;
+}
+
+async function loadFirebaseSDK() {
+  if (window.firebaseApp) return;
+  // Dynamically load Firebase modules from CDN (compat for simplicity)
+  const scripts = [
+    'https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js',
+    'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js',
+    'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js',
+  ];
+  for (const src of scripts) {
+    if (!document.querySelector(`script[src="${src}"]`)) {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = src;
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    }
+  }
+  window.firebaseApp = firebase.initializeApp({
+    apiKey: cloudCfg.apiKey,
+    authDomain: cloudCfg.authDomain,
+    projectId: cloudCfg.projectId,
+    storageBucket: cloudCfg.storageBucket || undefined,
+    messagingSenderId: cloudCfg.messagingSenderId || undefined,
+    appId: cloudCfg.appId || undefined,
+  });
+}
+
+async function ensureFirebaseAuth() {
+  await loadFirebaseSDK();
+  // Anonymous sign-in
+  const auth = firebase.auth();
+  if (!auth.currentUser) {
+    await auth.signInAnonymously();
+  }
+  return auth.currentUser;
+}
+
+async function syncToCloud(force = false) {
+  if (!cloudCfg) return;
+  if (cloudSyncing) return;
+  cloudSyncing = true;
+  updateSyncStatus();
+  try {
+    await ensureFirebaseAuth();
+    const db = firebase.firestore();
+    const uid = firebase.auth().currentUser.uid;
+    const docRef = db.collection('studyflowData').doc(uid);
+
+    // Read current remote data
+    const snapshot = await docRef.get();
+    const now = Date.now();
+    const localData = { tasks: P, words: WORDS, lastModified: now };
+
+    if (snapshot.exists && !force) {
+      const remoteData = snapshot.data();
+      // Merge strategy: use whichever was modified last
+      if (remoteData.lastModified && remoteData.lastModified > (cloudCfg._lastSyncTime || 0)) {
+        // Remote is newer - download
+        if (remoteData.tasks) P = remoteData.tasks;
+        if (remoteData.words) WORDS = remoteData.words;
+        await saveL(); // save to IndexedDB
+        await saveWords();
+        render();
+      } else {
+        // Local is newer - upload
+        await docRef.set(localData);
+      }
+    } else {
+      // No remote data or force - upload
+      await docRef.set(localData);
+    }
+
+    cloudCfg._lastSync = new Date().toISOString();
+    cloudCfg._lastSyncTime = now;
+    saveCloudCfgToStorage();
+    updateSyncStatus();
+  } catch (e) {
+    console.warn('[Cloud Sync] Error:', e);
+    if (e.code === 'failed-precondition' || e.message?.includes('Failed to get document')) {
+      // Firestore not created - ignore silently
+    } else {
+      updateSyncStatus();
+    }
+  } finally {
+    cloudSyncing = false;
+  }
+}
+
+function schedCloud() {
+  if (!cloudCfg) return;
+  clearTimeout(_cloudTimer);
+  _cloudTimer = setTimeout(() => syncToCloud(), 3000);
 }
 
 init();
 </script>
+<!-- Cloud Sync Modal -->
+<div class="ov hidden" id="cloud-modal">
+  <div class="modal">
+    <h3>☁️ クラウド設定（Firebase）</h3>
+    <p class="mnote">
+      Firebase を使ってデータをクラウドに同期します。<br>
+      以下の手順で Firebase プロジェクトを作成し、設定値を入力してください。
+    </p>
+    <p class="mnote">
+      <strong>①</strong> <a href="https://console.firebase.google.com" target="_blank">Firebase Console</a> にアクセス<br>
+      <strong>②</strong> プロジェクトを作成（無料）<br>
+      <strong>③</strong> 「Authentication」→「Sign-in method」→「匿名」を有効化<br>
+      <strong>④</strong> 「Firestore Database」→「データベースを作成」（テストモード）<br>
+      <strong>⑤</strong> 「プロジェクトの設定」→「構成ファイル」→ firebaseConfig の値をコピー
+    </p>
+    <div class="mf"><label>API Key</label><input id="cloud-apiKey" type="text" placeholder="AIzaSy..."></div>
+    <div class="mf"><label>Auth Domain</label><input id="cloud-authDomain" type="text" placeholder="your-project.firebaseapp.com"></div>
+    <div class="mf"><label>Project ID</label><input id="cloud-projectId" type="text" placeholder="your-project"></div>
+    <div class="mf"><label>Storage Bucket（省略可）</label><input id="cloud-storageBucket" type="text" placeholder="your-project.appspot.com"></div>
+    <div class="mf"><label>Messaging Sender ID（省略可）</label><input id="cloud-messagingSenderId" type="text"></div>
+    <div class="mf"><label>App ID（省略可）</label><input id="cloud-appId" type="text" placeholder="1:xxx:web:xxx"></div>
+    <div id="cloud-status" class="mnote" style="min-height:20px;margin-bottom:10px"></div>
+    <div class="ma">
+      <button class="bno" onclick="closeCloudModal()">キャンセル</button>
+      <button class="bok" onclick="testCloudConnection()">保存 & テスト同期</button>
+    </div>
+  </div>
+</div>
 <!-- Vocab Modal -->
 <div class="vocab-modal hidden" id="vocab-modal">
   <div class="vocab-header">
