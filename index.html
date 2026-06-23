@@ -1812,7 +1812,6 @@ function renderP(p){
     <div class="pc-strip" onclick="openBS('${p.id}',event)" style="cursor:pointer">
       <span style="font-size:11px;color:var(--td);font-family:var(--fm)">▶ タスク (${(p.subtasks||[]).length})</span>
       ${(dlSum(p)||{}).ex>0?`<span style="color:var(--exp);font-size:13px">❗</span>`:''}
-      <button class="add-s-btn" onclick="showSF('${p.id}','${p.id}');event.stopPropagation()">＋ タスク追加</button>
     </div>
   </div>`;
 }
@@ -3640,7 +3639,7 @@ function buildSubForm(rootId,parentId,prevDL){
     </div>
     <div class="fa">
       <button class="bno" onclick="closeForm()">キャンセル</button>
-      <button class="bok" onclick="bsStack.length>0?addSInBS():addS()">追加</button>
+      <button class="bok" onclick="addS()">追加</button>
     </div>
   </div>`;
 }
