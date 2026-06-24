@@ -2360,8 +2360,8 @@ function submitVocabTest(knew, event, type){
   const state = data[type]||{ids:[],idx:0};
   const w = WORDS.find(x=>x.id===state.ids[state.idx]);
   if(!w)return;
-  const today=new Date().toISOString().slice(0,10);
-  if(w.lastTestedAt!==today){
+  const currentSlot=getVocabTestDateKey();
+  if(w.lastTestedSlot!==currentSlot){
     if(knew){
       w.score=Math.min(2.0,Math.round((w.score+0.1)*10)/10);
     }else{
@@ -2371,7 +2371,7 @@ function submitVocabTest(knew, event, type){
         w.score=Math.max(0.1,Math.round((w.score-0.1)*10)/10);
       }
     }
-    w.lastTestedAt=today;
+    w.lastTestedSlot=currentSlot;
     saveWords();
   }
   state.idx=(state.idx||0)+1;
