@@ -2139,12 +2139,14 @@ function renderExternalWordSetsList(el){
       return `<div class="vcard-wrap"><div class="vcard" style="cursor:pointer" onclick="openExternalWordSet('${s.id}')"><div class="vcard-front"><div><div class="vcard-word">${esc(s.name)}</div><span class="vcard-type">外部単語帳</span></div><div class="vcard-score">${wc}語</div></div></div></div>`;
     }).join('');
 }
+let _extTestState = null; // { setId, words:[], idx, known, total, done:bool }
+
 function openExternalWordSet(setId){
   const set=externalWordSets.find(s=>s.id===setId);
   if(!set)return;
   const words=set.words||[];
   const el=document.getElementById('vocab-body');
-  el.innerHTML=`<div style="margin-bottom:10px;display:flex;align-items:center;gap:6px"><button class="bno" onclick="switchVocabTab('external')" style="font-size:12px">‹ 戻る</button><span style="font-weight:600">${esc(set.name)} (${words.length}語)</span></div><div class="vocab-search-row"><input id="evs-search-input" type="search" placeholder="単語を検索..." style="flex:1;padding:9px 12px;background:var(--sf3);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:16px;outline:none"></div><div id="evs-cards"></div>`;
+  el.innerHTML=`<div style="margin-bottom:10px;display:flex;align-items:center;gap:6px;flex-wrap:wrap"><button class="bno" onclick="switchVocabTab('external')" style="font-size:12px">‹ 戻る</button><span style="font-weight:600">${esc(set.name)} (${words.length}語)</span><button class="bok" style="margin-left:auto;font-size:12px;padding:5px 12px" onclick="startExternalVocabTest('${setId}')">📝 テスト開始</button></div><div class="vocab-search-row"><input id="evs-search-input" type="search" placeholder="単語を検索..." style="flex:1;padding:9px 12px;background:var(--sf3);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:16px;outline:none"></div><div id="evs-cards"></div>`;
   function renderEVS(search){
     const filtered=search?words.filter(w=>w.word.toLowerCase().includes(search.toLowerCase())||w.meanings.some(m=>m.toLowerCase().includes(search.toLowerCase()))):words;
     const cards=document.getElementById('evs-cards');
@@ -2153,6 +2155,56 @@ function openExternalWordSet(setId){
   }
   document.getElementById('evs-search-input').addEventListener('input',function(){renderEVS(this.value);});
   renderEVS('');
+}
+
+function startExternalVocabTest(setId){
+  const set=externalWordSets.find(s=>s.id===setId);
+  if(!set||!set.words||!set.words.length)return;
+  const shuffled=[...set.words];
+  for(let i=shuffled.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[shuffled[i],shuffled[j]]=[shuffled[j],shuffled[i]];}
+  _extTestState={setId,words:shuffled,idx:0,known:0,total:shuffled.length,done:false};
+  renderExternalVocabTest();
+}
+function renderExternalVocabTest(){
+  const el=document.getElementById('vocab-body');
+  if(!_extTestState||_extTestState.idx>=_extTestState.total){
+    // done or no state
+    if(_extTestState){
+      el.innerHTML=`<div style="text-align:center;padding:32px 16px">
+        <div style="font-size:32px;margin-bottom:10px">🎉</div>
+        <div style="font-size:16px;font-weight:700;margin-bottom:6px">テスト完了！</div>
+        <div style="font-size:13px;color:var(--td)">${_extTestState.known}/${_extTestState.total} 語わかった</div>
+        <div style="font-size:12px;color:var(--td);margin-bottom:16px">正答率 ${Math.round(_extTestState.known/_extTestState.total*100)}%</div>
+        <button class="bno" onclick="openExternalWordSet('${_extTestState.setId}')">戻る</button>
+        <button class="bok" style="margin-left:8px" onclick="startExternalVocabTest('${_extTestState.setId}')">もう一度</button>
+      </div>`;
+      _extTestState=null;
+    }
+    return;
+  }
+  const state=_extTestState;
+  const w=state.words[state.idx];
+  const pct=Math.round(state.idx/state.total*100);
+  el.innerHTML=`<div style="margin-bottom:10px;display:flex;align-items:center;gap:6px"><button class="bno" onclick="openExternalWordSet('${state.setId}')" style="font-size:12px">‹ 中断</button><span style="font-weight:600;font-size:14px">${state.idx+1}/${state.total}</span></div>
+    <div style="height:4px;background:var(--sf3);border-radius:2px;margin-bottom:16px"><div style="height:100%;width:${pct}%;background:var(--ac3);border-radius:2px;transition:width .3s"></div></div>
+    <div class="vtest-card" id="ext-vtest-card" onclick="document.getElementById('ext-vtest-card')?.classList.toggle('revealed')">
+      <div class="vtest-word">${esc(w.word)}</div>
+      <div style="font-size:11px;color:var(--td);margin-top:8px">タップして意味を確認</div>
+      <div class="vtest-back">
+        <div class="vcard-meaning" style="justify-content:center;font-size:15px">${esc(w.meanings.join('; '))}</div>
+        <div class="vtest-btns">
+          <button class="btn-forget" onclick="submitExternalVocabTest(false)">😓 わからなかった</button>
+          <button class="btn-know" onclick="submitExternalVocabTest(true)">😊 わかった</button>
+        </div>
+      </div>
+    </div>`;
+}
+function submitExternalVocabTest(knew){
+  if(!_extTestState||_extTestState.done)return;
+  if(knew)_extTestState.known++;
+  _extTestState.idx++;
+  if(_extTestState.idx>=_extTestState.total)_extTestState.done=true;
+  renderExternalVocabTest();
 }
 
 function renderVocabList(el){
