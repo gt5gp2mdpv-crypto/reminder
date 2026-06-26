@@ -1251,11 +1251,12 @@ function importJSON(e){
 let db=null;
 function openDB(){
   return new Promise((res,rej)=>{
-    const req=indexedDB.open('studyflow',2);
+    const req=indexedDB.open('studyflow',3);
     req.onupgradeneeded=e=>{
       const d=e.target.result;
       if(!d.objectStoreNames.contains('kv'))d.createObjectStore('kv');
       if(!d.objectStoreNames.contains('words'))d.createObjectStore('words');
+      if(e.oldVersion<3&&!d.objectStoreNames.contains('external_word_sets'))d.createObjectStore('external_word_sets');
     };
     req.onsuccess=e=>{res(e.target.result);};
     req.onerror=e=>{rej(e);};
@@ -1291,6 +1292,9 @@ async function init(){
     try{const d=localStorage.getItem('sf4');if(d)P=JSON.parse(d);}catch(e2){}
   }
   await loadWords();
+  // Seed external word sets from vocab-data.js (first launch only)
+  await seedExternalWordSets();
+  externalWordSets = await loadExternalWordSets();
   loadCloudCfg();
   updateSyncStatus();
   render();
@@ -2037,7 +2041,9 @@ function refreshActiveBS(){
 //  VOCABULARY (単語帳)
 // ════════════════════════════════
 let WORDS = []; // loaded from IDB
-let vocabTab = 'english';
+let externalWordSets = []; // loaded from IDB (external_word_sets store)
+let vocabTab = 'my'; // 'my', 'external', 'test'
+let vocabSubTab = 'english'; // for my: 'english'|'classical'; for external: set id
 let vocabFilter = 'english';
 let vocabSearch = '';
 let vocabFormType = 'english';
@@ -2061,22 +2067,21 @@ async function saveWords(){
 function gidV(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
 
 function openVocabModal(){
-  vocabTab='english'; vocabFilter='english';
+  vocabTab='my'; vocabSubTab='english';
   document.getElementById('vocab-modal').classList.remove('hidden');
   closeNav();
-  switchVocabTab('english');
+  switchVocabTab('my');
 }
 function closeVocabModal(){
   document.getElementById('vocab-modal').classList.add('hidden');
 }
 function switchVocabTab(tab){
   vocabTab=tab;
-  document.getElementById('vtab-english').classList.toggle('active',tab==='english');
-  document.getElementById('vtab-classical').classList.toggle('active',tab==='classical');
+  document.getElementById('vtab-my').classList.toggle('active',tab==='my');
+  document.getElementById('vtab-external').classList.toggle('active',tab==='external');
   document.getElementById('vtab-test').classList.toggle('active',tab==='test');
-  const isList=tab==='english'||tab==='classical';
-  document.getElementById('vocab-fab').style.display=isList?'flex':'none';
-  if(isList) vocabFilter=tab;
+  const isMy=tab==='my';
+  document.getElementById('vocab-fab').style.display=isMy?'flex':'none';
   renderVocabBody();
 }
 
@@ -2096,8 +2101,58 @@ function getVocabTestWords(){
 
 function renderVocabBody(){
   const el=document.getElementById('vocab-body');
-  if(vocabTab==='english'||vocabTab==='classical') renderVocabList(el);
+  if(vocabTab==='my') renderMyVocabWords(el);
+  else if(vocabTab==='external') renderExternalWordSetsList(el);
   else renderVocabTest(el);
+}
+function renderMyVocabWords(el){
+  let words=[...WORDS];
+  if(vocabSearch) words=words.filter(w=>
+    w.word.toLowerCase().includes(vocabSearch.toLowerCase())||
+    (w.meanings||[]).some(m=>m.text.includes(vocabSearch))
+  );
+  words.sort((a,b)=>a.score-b.score);
+  const existingSearch=el.querySelector('#vocab-search-input');
+  if(!existingSearch){
+    el.innerHTML=`<div class="vocab-filter-row"><button class="vchip${vocabFilter==='english'?' active':''}" onclick="vocabFilter='english';renderVocabBody()">英語</button><button class="vchip${vocabFilter==='classical'?' active':''}" onclick="vocabFilter='classical';renderVocabBody()">古文</button><button class="vchip${vocabFilter==='all'?' active':''}" onclick="vocabFilter='all';renderVocabBody()">すべて</button></div><div class="vocab-search-row"><input id="vocab-search-input" type="search" placeholder="単語・意味を検索..." value="${esc(vocabSearch)}" style="font-size:16px"></div><div id="vocab-cards"></div>`;
+    document.getElementById('vocab-search-input').addEventListener('input',function(){vocabSearch=this.value;renderMyVocabCards();});
+  }
+  renderMyVocabCards();
+}
+function renderMyVocabCards(){
+  let words=[...WORDS];
+  if(vocabFilter!=='all') words=words.filter(w=>w.type===vocabFilter);
+  if(vocabSearch) words=words.filter(w=>w.word.toLowerCase().includes(vocabSearch.toLowerCase())||(w.meanings||[]).some(m=>m.text.includes(vocabSearch)));
+  words.sort((a,b)=>a.score-b.score);
+  const el=document.getElementById('vocab-cards');
+  if(!el)return;
+  el.innerHTML=words.length===0?'<div class="empty"><div class="ico">📚</div><p>My単語がありません<br>＋ボタンで追加してください</p></div>':words.map(w=>renderVocabCard(w)).join('');
+}
+function renderExternalWordSetsList(el){
+  if(!externalWordSets.length){
+    el.innerHTML='<div class="empty"><div class="ico">📚</div><p>外部単語帳が読み込まれていません</p></div>';
+    return;
+  }
+  el.innerHTML='<div style="margin-bottom:12px;font-size:13px;color:var(--td)">📚 外部単語帳を選択</div>'+
+    externalWordSets.map(s=>{
+      const wc=s.words?Object.keys(s.words).length:0;
+      return `<div class="vcard-wrap"><div class="vcard" style="cursor:pointer" onclick="openExternalWordSet('${s.id}')"><div class="vcard-front"><div><div class="vcard-word">${esc(s.name)}</div><span class="vcard-type">外部単語帳</span></div><div class="vcard-score">${wc}語</div></div></div></div>`;
+    }).join('');
+}
+function openExternalWordSet(setId){
+  const set=externalWordSets.find(s=>s.id===setId);
+  if(!set)return;
+  const words=set.words||[];
+  const el=document.getElementById('vocab-body');
+  el.innerHTML=`<div style="margin-bottom:10px;display:flex;align-items:center;gap:6px"><button class="bno" onclick="switchVocabTab('external')" style="font-size:12px">‹ 戻る</button><span style="font-weight:600">${esc(set.name)} (${words.length}語)</span></div><div class="vocab-search-row"><input id="evs-search-input" type="search" placeholder="単語を検索..." style="flex:1;padding:9px 12px;background:var(--sf3);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:16px;outline:none"></div><div id="evs-cards"></div>`;
+  function renderEVS(search){
+    const filtered=search?words.filter(w=>w.word.toLowerCase().includes(search.toLowerCase())||w.meanings.some(m=>m.toLowerCase().includes(search.toLowerCase()))):words;
+    const cards=document.getElementById('evs-cards');
+    if(!cards)return;
+    cards.innerHTML=filtered.map(w=>`<div class="vcard-wrap"><div class="vcard" onclick="this.classList.toggle('flipped')"><div class="vcard-front"><div><div class="vcard-word">${esc(w.word)}</div></div></div><div class="vcard-back"><div class="vcard-meaning"><span>${esc(w.meanings.join('; '))}</span></div></div></div></div>`).join('');
+  }
+  document.getElementById('evs-search-input').addEventListener('input',function(){renderEVS(this.value);});
+  renderEVS('');
 }
 
 function renderVocabList(el){
@@ -2695,6 +2750,47 @@ function deleteVocabWord(id){
   WORDS=WORDS.filter(w=>w.id!==id);
   saveWords();
   renderVocabBody();
+}
+
+// ── External Word Sets ──
+async function loadExternalWordSets() {
+  try{
+    const tx=db.transaction('external_word_sets','readonly');
+    const req=tx.objectStore('external_word_sets').getAll();
+    return new Promise((res,rej)=>{
+      req.onsuccess=e=>{
+        const data=e.target.result;
+        if(data&&data.length)res(data);
+        else res([]);
+      };
+      req.onerror=e=>{res([]);};
+    });
+  }catch(e){return [];}
+}
+async function saveExternalWordSets(sets) {
+  try{
+    const tx=db.transaction('external_word_sets','readwrite');
+    // clear existing
+    tx.objectStore('external_word_sets').clear();
+    sets.forEach(s=>tx.objectStore('external_word_sets').put(s));
+    return new Promise((res,rej)=>{tx.oncomplete=res;tx.onerror=rej;});
+  }catch(e){}
+}
+
+// Called once on first app launch to seed external word sets from vocab-data.js
+async function seedExternalWordSets() {
+  if(typeof VOCAB_DATA_SETS==='undefined')return;
+  // Check if already seeded
+  const existing=await loadExternalWordSets();
+  if(existing.length>0)return; // already seeded
+  // Convert VOCAB_DATA_SETS to the storage format
+  const sets=VOCAB_DATA_SETS.map(ds=>({
+    id:ds.id,
+    name:ds.name,
+    words:ds.parsed||[]
+  }));
+  await saveExternalWordSets(sets);
+  externalWordSets=sets;
 }
 
 // ════════════════════════════════
@@ -4306,6 +4402,7 @@ function schedCloud() {
 
 init();
 </script>
+<script src="vocab-data.js"></script>
 <!-- Cloud Sync Modal -->
 <div class="ov hidden" id="cloud-modal">
   <div class="modal">
@@ -4356,8 +4453,8 @@ init();
     <button class="vocab-close" onclick="closeVocabModal()">×</button>
   </div>
   <div class="vocab-tabs">
-    <button class="vocab-tab active" id="vtab-english" onclick="switchVocabTab('english')">英語</button>
-    <button class="vocab-tab" id="vtab-classical" onclick="switchVocabTab('classical')">古文</button>
+    <button class="vocab-tab active" id="vtab-my" onclick="switchVocabTab('my')">My単語帳</button>
+    <button class="vocab-tab" id="vtab-external" onclick="switchVocabTab('external')">外部単語帳</button>
     <button class="vocab-tab" id="vtab-test" onclick="switchVocabTab('test')">📝 復習テスト</button>
   </div>
   <div class="vocab-body" id="vocab-body"></div>
