@@ -2826,17 +2826,45 @@ async function saveExternalWordSets(sets) {
   }catch(e){}
 }
 
+// CSVパース: "番号,英単語,意味" 形式 → [{word, meanings:[{text, pos:'名詞'}]}]
+function parseVocabCSV(csvText) {
+  const lines = csvText.trim().split('\n');
+  const result = [];
+  for (let i = 1; i < lines.length; i++) { // 1行目はヘッダーなのでスキップ
+    const line = lines[i].trim();
+    if (!line) continue;
+    // カンマ区切りだが、意味にカンマが含まれる可能性があるため、最初の2つのカンマで分割
+    const firstComma = line.indexOf(',');
+    if (firstComma === -1) continue;
+    const secondComma = line.indexOf(',', firstComma + 1);
+    if (secondComma === -1) continue;
+    const word = line.slice(firstComma + 1, secondComma).trim();
+    const meaning = line.slice(secondComma + 1).trim();
+    if (word && meaning) {
+      result.push({
+        word: word,
+        meanings: meaning.split('；').map(m => ({
+          text: m.trim(),
+          pos: '名詞'
+        }))
+      });
+    }
+  }
+  return result;
+}
+
 // Called once on first app launch to seed external word sets from vocab-data.js
 async function seedExternalWordSets() {
   if(typeof VOCAB_DATA_SETS==='undefined')return;
-  // Check if already seeded
+  // Check if already seeded with valid data
   const existing=await loadExternalWordSets();
-  if(existing.length>0)return; // already seeded
-  // Convert VOCAB_DATA_SETS to the storage format
+  // 既存データがあり、かつwordsが空でなければスキップ
+  if(existing.length>0 && existing.some(s=>s.words && s.words.length>0)) return;
+  // Convert VOCAB_DATA_SETS to the storage format (parse CSV)
   const sets=VOCAB_DATA_SETS.map(ds=>({
     id:ds.id,
     name:ds.name,
-    words:ds.parsed||[]
+    words: ds.csv ? parseVocabCSV(ds.csv) : (ds.parsed||[])
   }));
   await saveExternalWordSets(sets);
   externalWordSets=sets;
