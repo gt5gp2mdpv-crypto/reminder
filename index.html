@@ -1248,12 +1248,12 @@ function importJSON(e){
 let db=null;
 function openDB(){
   return new Promise((res,rej)=>{
-    const req=indexedDB.open('studyflow',3);
+    const req=indexedDB.open('studyflow',4);
     req.onupgradeneeded=e=>{
       const d=e.target.result;
       if(!d.objectStoreNames.contains('kv'))d.createObjectStore('kv');
       if(!d.objectStoreNames.contains('words'))d.createObjectStore('words');
-      if(e.oldVersion<3&&!d.objectStoreNames.contains('external_word_sets'))d.createObjectStore('external_word_sets');
+      if(!d.objectStoreNames.contains('external_word_sets'))d.createObjectStore('external_word_sets');
     };
     req.onsuccess=e=>{res(e.target.result);};
     req.onerror=e=>{rej(e);};
