@@ -2846,10 +2846,7 @@ function parseVocabCSV(csvText) {
     if (word && meaning) {
       result.push({
         word: word,
-        meanings: meaning.split('；').map(m => ({
-          text: m.trim(),
-          pos: '名詞'
-        }))
+        meanings: meaning.split('；').map(m => m.trim()).filter(m => m)
       });
     }
   }
