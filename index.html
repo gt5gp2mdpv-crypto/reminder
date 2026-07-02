@@ -416,6 +416,9 @@ input[type=checkbox]{accent-color:var(--ac);}
           <button class="nt" style="font-size:11px;padding:7px 10px;gap:6px" onclick="openCloudModal()">
             ☁️ クラウド設定
           </button>
+          <button class="nt" style="font-size:11px;padding:7px 10px;gap:6px;color:var(--exp)" onclick="resetDB()">
+            🗑️ データベースリセット
+          </button>
         </div>
       </div>
       <div class="syncs" id="syncs" style="display:none"></div>
@@ -2127,7 +2130,7 @@ function renderMyVocabCards(){
 }
 function renderExternalWordSetsList(el){
   if(!externalWordSets.length){
-    el.innerHTML='<div class="empty"><div class="ico">📚</div><p>外部単語帳が読み込まれていません</p></div>';
+    el.innerHTML='<div class="empty"><div class="ico">📚</div><p>外部単語帳が読み込まれていません</p><button class="bok" onclick="reloadExternalWordSets()" style="margin-top:12px">🔄 再読み込み</button></div>';
     return;
   }
   el.innerHTML='<div style="margin-bottom:12px;font-size:13px;color:var(--td)">📚 外部単語帳を選択</div>'+
@@ -2868,6 +2871,28 @@ async function seedExternalWordSets() {
   }));
   await saveExternalWordSets(sets);
   externalWordSets=sets;
+  console.log('[seedExternalWordSets] Seeded', sets.length, 'external word sets');
+}
+
+// Reload external word sets (called from UI button)
+async function reloadExternalWordSets(){
+  try{
+    await seedExternalWordSets();
+    externalWordSets = await loadExternalWordSets();
+    renderVocabBody();
+    alert('✅ 外部単語帳を再読み込みしました');
+  }catch(e){
+    alert('❌ 再読み込みに失敗しました: '+e.message);
+    console.error(e);
+  }
+}
+
+// Debug function: reset IndexedDB (call from console: resetDB())
+async function resetDB(){
+  if(!confirm('IndexedDBをリセットします。すべてのデータが削除されます。よろしいですか？'))return;
+  const req=indexedDB.deleteDatabase('studyflow');
+  req.onsuccess=()=>{alert('データベースを削除しました。ページを再読み込みしてください。');location.reload();};
+  req.onerror=()=>{alert('削除に失敗しました。ブラウザの開発者ツールから手動で削除してください。');};
 }
 
 // ════════════════════════════════
