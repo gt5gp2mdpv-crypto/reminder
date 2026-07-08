@@ -3197,9 +3197,22 @@ function renderReviewTab(el) {
   el.innerHTML = `<div>${lessonSection}${srsSection}${tmBtn}</div>`;
 }
 
+function setSRSSubject(s, btn) {
+  curSubject = s;
+  const el = document.getElementById('right');
+  renderSRS(el);
+}
+
 function renderSRS(el) {
   const due = getSRSDueTasks();
-  if (!due.length) {
+  // Filter by subject
+  const filteredDue = curSubject === 'all'
+    ? due
+    : due.filter(item => {
+        const p = P.find(x => x.id === (item.isParent ? item.task.id : item.rootId));
+        return p && (p.sciSubject === curSubject);
+      });
+  if (!filteredDue.length) {
   const tmCountEmpty = getTomorrowSRSTasks().length;
   const tmBtnEmpty = tmCountEmpty > 0
     ? `<button onclick="openTomorrowBS()" style="display:inline-flex;align-items:center;gap:6px;background:var(--sf3);border:1px solid var(--bd);border-radius:var(--rs);color:var(--td);font-size:12px;padding:7px 12px;cursor:pointer;margin-top:12px">
@@ -3209,7 +3222,7 @@ function renderSRS(el) {
     return;
   }
   // Note: lesson tasks are included via getSRSDueTasks since they have srsActive:true and dueDate
-  const cards = due.map((item) => {
+  const cards = filteredDue.map((item) => {
     const { task, rootId, isParent } = item;
     const p = P.find(x => x.id === (isParent ? task.id : rootId));
     const parentLabel = p ? p.title : '';
@@ -3219,17 +3232,19 @@ function renderSRS(el) {
     const daysOverdue = Math.floor((Date.now() - new Date(task.dueDate)) / 86400000);
     const overdueLabel = daysOverdue > 0 ? `<span class="badge expired">${daysOverdue}日遅れ</span>` :
       `<span class="badge ok">今日</span>`;
-    const nextDue = (n) => {
-      const d = new Date(); d.setDate(d.getDate() + n);
-      return `${d.getMonth()+1}/${d.getDate()}`;
-    };
+    const subjClr = p && p.sciSubject ? (SC[p.sciSubject] || 'var(--ac)') : 'var(--ac)';
+    const subjTag = p && p.sciSubject
+      ? `<span class="tag" style="background:${SC[p.sciSubject]||'#7f849c'}22;color:${SC[p.sciSubject]||'#7f849c'};border:1px solid ${SC[p.sciSubject]||'#7f849c'}44">${p.sciSubject}</span>`
+      : '';
     return `<div class="pc" style="margin-bottom:10px">
       <div class="pc-head" style="padding:12px 14px">
+        <div class="pc-bar" style="background:${subjClr}"></div>
         <div class="pc-info">
           ${parentLabel && !isParent ? `<div style="font-size:12px;color:var(--td);margin-bottom:2px">📖 ${esc(parentLabel)}</div>` : ''}
           <div class="pc-title" style="font-size:15px">${esc(taskLabel || parentLabel)}</div>
           ${fieldStr ? `<div style="font-size:11px;color:var(--td);margin-top:2px">${esc(fieldStr)}</div>` : ''}
           <div class="pc-meta" style="margin-top:4px">
+            ${subjTag}
             ${overdueLabel}
             <span class="tag">🔁 ${task.reps||0}回目 · EF${(task.ef||2.5).toFixed(1)}</span>
           </div>
@@ -3250,10 +3265,25 @@ function renderSRS(el) {
         📅 明日の復習を確認 <span style="background:var(--sf2);border-radius:10px;padding:1px 7px;font-family:var(--fm)">${tmCount}</span>
       </button>`
     : '';
+  // Build subject filter chips
+  const subjChips = SUBJECTS.map(s =>
+    `<button class="fchip${curSubject===s?' active':''}"
+       style="${curSubject===s?`background:${SC[s]}22;border-color:${SC[s]};color:${SC[s]}`:''}"
+       onclick="setSRSSubject('${s}',this)">${s}</button>`
+  ).join('');
   el.innerHTML = `
   <div>
     <div style="font-size:16px;font-weight:700;margin-bottom:4px">🧠 今日の復習</div>
-    <div style="font-size:12px;color:var(--td);margin-bottom:10px">${due.length}件 / 復習ループ対象</div>
+    <div style="font-size:12px;color:var(--td);margin-bottom:10px">${filteredDue.length}件 / 復習ループ対象</div>
+    <div class="filter-bar" style="margin-bottom:14px">
+      <div class="filter-row">
+        <span class="filter-lbl">教科</span>
+        <div class="filter-chips">
+          <button class="fchip${curSubject==='all'?' active':''}" onclick="setSRSSubject('all',this)">すべて</button>
+          ${subjChips}
+        </div>
+      </div>
+    </div>
     ${tmBtn}
     ${cards}
   </div>`;
