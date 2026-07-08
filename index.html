@@ -3212,52 +3212,45 @@ function renderSRS(el) {
         const p = P.find(x => x.id === (item.isParent ? item.task.id : item.rootId));
         return p && (p.sciSubject === curSubject);
       });
-  if (!filteredDue.length) {
-  const tmCountEmpty = getTomorrowSRSTasks().length;
-  const tmBtnEmpty = tmCountEmpty > 0
-    ? `<button onclick="openTomorrowBS()" style="display:inline-flex;align-items:center;gap:6px;background:var(--sf3);border:1px solid var(--bd);border-radius:var(--rs);color:var(--td);font-size:12px;padding:7px 12px;cursor:pointer;margin-top:12px">
-        📅 明日の復習を確認 <span style="background:var(--sf2);border-radius:10px;padding:1px 7px;font-family:var(--fm)">${tmCountEmpty}</span>
-      </button>` : '';
-    el.innerHTML = `<div class="empty"><div class="ico">🎉</div><p>今日の復習はありません！<br>すべて完了しています。</p>${tmBtnEmpty}</div>`;
-    return;
-  }
   // Note: lesson tasks are included via getSRSDueTasks since they have srsActive:true and dueDate
-  const cards = filteredDue.map((item) => {
-    const { task, rootId, isParent } = item;
-    const p = P.find(x => x.id === (isParent ? task.id : rootId));
-    const parentLabel = p ? p.title : '';
-    const taskLabel = isParent ? task.title : (task.title || Object.values(task.fields || {}).filter(Boolean).join(' ') || '');
-    const fieldStr = (!isParent && !item.isLesson) ? Object.entries(task.fields || {}).filter(([k,v]) => v)
-      .map(([k,v]) => (FIELD_PREFIX[k]||'') + v).join(' · ') : '';
-    const daysOverdue = Math.floor((Date.now() - new Date(task.dueDate)) / 86400000);
-    const overdueLabel = daysOverdue > 0 ? `<span class="badge expired">${daysOverdue}日遅れ</span>` :
-      `<span class="badge ok">今日</span>`;
-    const subjClr = p && p.sciSubject ? (SC[p.sciSubject] || 'var(--ac)') : 'var(--ac)';
-    const subjTag = p && p.sciSubject
-      ? `<span class="tag" style="background:${SC[p.sciSubject]||'#7f849c'}22;color:${SC[p.sciSubject]||'#7f849c'};border:1px solid ${SC[p.sciSubject]||'#7f849c'}44">${p.sciSubject}</span>`
-      : '';
-    return `<div class="pc" style="margin-bottom:10px">
-      <div class="pc-head" style="padding:12px 14px">
-        <div class="pc-bar" style="background:${subjClr}"></div>
-        <div class="pc-info">
-          ${parentLabel && !isParent ? `<div style="font-size:12px;color:var(--td);margin-bottom:2px">📖 ${esc(parentLabel)}</div>` : ''}
-          <div class="pc-title" style="font-size:15px">${esc(taskLabel || parentLabel)}</div>
-          ${fieldStr ? `<div style="font-size:11px;color:var(--td);margin-top:2px">${esc(fieldStr)}</div>` : ''}
-          <div class="pc-meta" style="margin-top:4px">
-            ${subjTag}
-            ${overdueLabel}
-            <span class="tag">🔁 ${task.reps||0}回目 · EF${(task.ef||2.5).toFixed(1)}</span>
+  const cards = filteredDue.length
+    ? filteredDue.map((item) => {
+        const { task, rootId, isParent } = item;
+        const p = P.find(x => x.id === (isParent ? task.id : rootId));
+        const parentLabel = p ? p.title : '';
+        const taskLabel = isParent ? task.title : (task.title || Object.values(task.fields || {}).filter(Boolean).join(' ') || '');
+        const fieldStr = (!isParent && !item.isLesson) ? Object.entries(task.fields || {}).filter(([k,v]) => v)
+          .map(([k,v]) => (FIELD_PREFIX[k]||'') + v).join(' · ') : '';
+        const daysOverdue = Math.floor((Date.now() - new Date(task.dueDate)) / 86400000);
+        const overdueLabel = daysOverdue > 0 ? `<span class="badge expired">${daysOverdue}日遅れ</span>` :
+          `<span class="badge ok">今日</span>`;
+        const subjClr = p && p.sciSubject ? (SC[p.sciSubject] || 'var(--ac)') : 'var(--ac)';
+        const subjTag = p && p.sciSubject
+          ? `<span class="tag" style="background:${SC[p.sciSubject]||'#7f849c'}22;color:${SC[p.sciSubject]||'#7f849c'};border:1px solid ${SC[p.sciSubject]||'#7f849c'}44">${p.sciSubject}</span>`
+          : '';
+        return `<div class="pc" style="margin-bottom:10px">
+          <div class="pc-head" style="padding:12px 14px">
+            <div class="pc-bar" style="background:${subjClr}"></div>
+            <div class="pc-info">
+              ${parentLabel && !isParent ? `<div style="font-size:12px;color:var(--td);margin-bottom:2px">📖 ${esc(parentLabel)}</div>` : ''}
+              <div class="pc-title" style="font-size:15px">${esc(taskLabel || parentLabel)}</div>
+              ${fieldStr ? `<div style="font-size:11px;color:var(--td);margin-top:2px">${esc(fieldStr)}</div>` : ''}
+              <div class="pc-meta" style="margin-top:4px">
+                ${subjTag}
+                ${overdueLabel}
+                <span class="tag">🔁 ${task.reps||0}回目 · EF${(task.ef||2.5).toFixed(1)}</span>
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
-      <div style="display:flex;gap:6px;padding:0 14px 12px">
-        <button onclick="openSRSModal('${task.id}','${rootId}',event)"
-          style="flex:1;padding:10px;border-radius:var(--rs);border:none;background:var(--ac);color:white;font-size:13px;font-weight:600;cursor:pointer">
-          ✅ 復習した → 評価する
-        </button>
-      </div>
-    </div>`;
-  }).join('');
+          <div style="display:flex;gap:6px;padding:0 14px 12px">
+            <button onclick="openSRSModal('${task.id}','${rootId}',event)"
+              style="flex:1;padding:10px;border-radius:var(--rs);border:none;background:var(--ac);color:white;font-size:13px;font-weight:600;cursor:pointer">
+              ✅ 復習した → 評価する
+            </button>
+          </div>
+        </div>`;
+      }).join('')
+    : `<div class="empty"><div class="ico">📋</div><p>この教科の復習タスクはありません</p></div>`;
 
   const tmCount = getTomorrowSRSTasks().length;
   const tmBtn = tmCount > 0
