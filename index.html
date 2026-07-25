@@ -572,7 +572,8 @@ input[type=checkbox]{accent-color:var(--ac);}
   </div>
 </div>
 
-<script src="vocab-data.js"></script>
+<!-- 外部単語帳の初期データ。ファイル名とここを必ず一致させる。 -->
+<script src="teppeki-vocab.js"></script>
 <script>
 const RANGE_FIELDS = [
   { id:'page',  label:'ページ数',      ph:'例: pp.120-135' },
@@ -2129,17 +2130,17 @@ function renderMyVocabCards(){
   el.innerHTML=words.length===0?'<div class="empty"><div class="ico">📚</div><p>My単語がありません<br>＋ボタンで追加してください</p></div>':words.map(w=>renderVocabCard(w)).join('');
 }
 function renderExternalWordSetsList(el){
+  const picker='<input id="external-word-set-file" type="file" accept=".csv,text/csv" style="display:none" onchange="importExternalWordSet(event)">';
   if(!externalWordSets.length){
-    el.innerHTML='<div class="empty"><div class="ico">📚</div><p>外部単語帳が読み込まれていません</p><button class="bok" onclick="reloadExternalWordSets()" style="margin-top:12px">🔄 再読み込み</button></div>';
+    el.innerHTML=picker+'<div class="empty"><div class="ico">📚</div><p>外部単語帳がありません</p><button class="bok" onclick="chooseExternalWordSetFile()" style="margin-top:12px">＋ CSVを追加</button></div>';
     return;
   }
-  el.innerHTML='<div style="margin-bottom:12px;font-size:13px;color:var(--td)">📚 外部単語帳を選択</div>'+
+  el.innerHTML=picker+'<div style="margin-bottom:12px;display:flex;align-items:center;gap:8px"><div style="font-size:13px;color:var(--td);flex:1">📚 外部単語帳を選択</div><button class="bok" onclick="chooseExternalWordSetFile()" style="font-size:12px;padding:5px 10px">＋ CSVを追加</button></div>'+
     externalWordSets.map(s=>{
-      const wc=s.words?Object.keys(s.words).length:0;
-      return `<div class="vcard-wrap"><div class="vcard" style="cursor:pointer" onclick="openExternalWordSet('${s.id}')"><div class="vcard-front"><div><div class="vcard-word">${esc(s.name)}</div><span class="vcard-type">外部単語帳</span></div><div class="vcard-score">${wc}語</div></div></div></div>`;
+      const wc=s.words?s.words.length:0;
+      return `<div class="vcard-wrap"><div class="vcard" style="cursor:pointer" onclick="openExternalWordSet('${s.id}')"><div class="vcard-front"><div><div class="vcard-word">${esc(s.name)}</div><span class="vcard-type">外部単語帳</span></div><div class="vcard-score">${wc}語</div></div></div><button class="bno" onclick="event.stopPropagation();deleteExternalWordSet('${s.id}')" style="font-size:11px;margin:5px 0 0 8px;padding:3px 8px">削除</button></div>`;
     }).join('');
-}
-let _extTestState = null; // { setId, words:[], idx, known, total, done:bool }
+}let _extTestState = null; // { setId, words:[], idx, known, total, done:bool }
 
 function openExternalWordSet(setId){
   const set=externalWordSets.find(s=>s.id===setId);
@@ -2809,79 +2810,77 @@ async function loadExternalWordSets() {
   try{
     const tx=db.transaction('external_word_sets','readonly');
     const req=tx.objectStore('external_word_sets').getAll();
-    return new Promise((res,rej)=>{
-      req.onsuccess=e=>{
-        const data=e.target.result;
-        if(data&&data.length)res(data);
-        else res([]);
-      };
-      req.onerror=e=>{res([]);};
-    });
+    return new Promise(res=>{req.onsuccess=e=>res(e.target.result||[]);req.onerror=()=>res([]);});
   }catch(e){return [];}
 }
 async function saveExternalWordSets(sets) {
-  try{
-    const tx=db.transaction('external_word_sets','readwrite');
-    // clear existing
-    tx.objectStore('external_word_sets').clear();
-    sets.forEach(s=>tx.objectStore('external_word_sets').put(s));
-    return new Promise((res,rej)=>{tx.oncomplete=res;tx.onerror=rej;});
-  }catch(e){}
+  const tx=db.transaction('external_word_sets','readwrite');
+  const store=tx.objectStore('external_word_sets');
+  store.clear();
+  // このストアには keyPath がないため、IDを明示しない put() は DataError になる。
+  sets.forEach(s=>store.put(s,s.id));
+  return new Promise((res,rej)=>{tx.oncomplete=res;tx.onerror=()=>rej(tx.error||new Error('保存に失敗しました'));});
 }
 
-// CSVパース: "番号,英単語,意味" 形式 → [{word, meanings:[{text, pos:'名詞'}]}]
+// "番号,英単語,意味" と "英単語,意味" に対応。引用符内のカンマ・改行も扱う。
 function parseVocabCSV(csvText) {
-  const lines = csvText.trim().split('\n');
-  const result = [];
-  for (let i = 1; i < lines.length; i++) { // 1行目はヘッダーなのでスキップ
-    const line = lines[i].trim();
-    if (!line) continue;
-    // カンマ区切りだが、意味にカンマが含まれる可能性があるため、最初の2つのカンマで分割
-    const firstComma = line.indexOf(',');
-    if (firstComma === -1) continue;
-    const secondComma = line.indexOf(',', firstComma + 1);
-    if (secondComma === -1) continue;
-    const word = line.slice(firstComma + 1, secondComma).trim();
-    const meaning = line.slice(secondComma + 1).trim();
-    if (word && meaning) {
-      result.push({
-        word: word,
-        meanings: meaning.split('；').map(m => m.trim()).filter(m => m)
-      });
-    }
+  const rows=[]; let row=[], field='', quoted=false;
+  for(let i=0;i<csvText.length;i++){
+    const ch=csvText[i];
+    if(ch==='"'){if(quoted&&csvText[i+1]==='"'){field+='"';i++;}else quoted=!quoted;}
+    else if(ch===','&&!quoted){row.push(field.trim());field='';}
+    else if((ch==='\n'||ch==='\r')&&!quoted){
+      if(ch==='\r'&&csvText[i+1]==='\n')i++;
+      row.push(field.trim());if(row.some(Boolean))rows.push(row);row=[];field='';
+    }else field+=ch;
   }
-  return result;
+  row.push(field.trim());if(row.some(Boolean))rows.push(row);
+  return rows.filter((cols,index)=>!(index===0&&/^(番号|no\.?|id|英単語|word)$/i.test((cols[0]||'').trim())))
+    .map(cols=>{
+      const numbered=/^\d+$/.test(cols[0]||'');
+      const word=(numbered?cols[1]:cols[0]||'').trim();
+      const meaning=(numbered?cols.slice(2):cols.slice(1)).join(',').trim();
+      return {word,meanings:meaning.split(/[；;]/).map(m=>m.trim()).filter(Boolean)};
+    }).filter(w=>w.word&&w.meanings.length);
 }
 
-// Called once on first app launch to seed external word sets from vocab-data.js
 async function seedExternalWordSets() {
   if(typeof VOCAB_DATA_SETS==='undefined')return;
-  // Check if already seeded with valid data
   const existing=await loadExternalWordSets();
-  // 既存データがあり、かつwordsが空でなければスキップ
-  if(existing.length>0 && existing.some(s=>s.words && s.words.length>0)) return;
-  // Convert VOCAB_DATA_SETS to the storage format (parse CSV)
-  const sets=VOCAB_DATA_SETS.map(ds=>({
-    id:ds.id,
-    name:ds.name,
-    words: ds.csv ? parseVocabCSV(ds.csv) : (ds.parsed||[])
-  }));
-  await saveExternalWordSets(sets);
-  externalWordSets=sets;
-  console.log('[seedExternalWordSets] Seeded', sets.length, 'external word sets');
+  if(existing.some(s=>s.id==='teppeki'&&s.words&&s.words.length))return;
+  const presets=VOCAB_DATA_SETS.map(ds=>({id:ds.id,name:ds.name,words:ds.csv?parseVocabCSV(ds.csv):(ds.parsed||[])}));
+  const merged=[...existing.filter(s=>!presets.some(p=>p.id===s.id)),...presets];
+  await saveExternalWordSets(merged);
+  externalWordSets=merged;
 }
-
-// Reload external word sets (called from UI button)
 async function reloadExternalWordSets(){
+  try{await seedExternalWordSets();externalWordSets=await loadExternalWordSets();renderVocabBody();}
+  catch(e){alert('❌ 再読み込みに失敗しました: '+e.message);console.error(e);}
+}
+function chooseExternalWordSetFile(){document.getElementById('external-word-set-file')?.click();}
+function decodeCSVFile(buffer){
+  const bytes=new Uint8Array(buffer);
+  try{return new TextDecoder('utf-8',{fatal:true}).decode(bytes).replace(/^\uFEFF/,'');}
+  catch(e){return new TextDecoder('shift_jis').decode(bytes);}
+}
+async function importExternalWordSet(e){
+  const file=e.target.files&&e.target.files[0];if(!file)return;
   try{
-    await seedExternalWordSets();
-    externalWordSets = await loadExternalWordSets();
-    renderVocabBody();
-    alert('✅ 外部単語帳を再読み込みしました');
-  }catch(e){
-    alert('❌ 再読み込みに失敗しました: '+e.message);
-    console.error(e);
-  }
+    const words=parseVocabCSV(decodeCSVFile(await file.arrayBuffer()));
+    if(!words.length)throw new Error('単語と意味の組を見つけられませんでした');
+    const baseName=file.name.replace(/\.[^.]+$/,'')||'外部単語帳';
+    const name=prompt('単語帳名を入力してください',baseName);if(name===null)return;
+    const set={id:'external_'+gidV(),name:name.trim()||baseName,words};
+    await saveExternalWordSets([...externalWordSets,set]);
+    externalWordSets=await loadExternalWordSets();renderVocabBody();
+    alert(`✅ ${set.name}（${words.length}語）を追加しました`);
+  }catch(err){console.error('[importExternalWordSet]',err);alert('❌ CSVを読み込めませんでした: '+err.message);}
+  finally{e.target.value='';}
+}
+async function deleteExternalWordSet(id){
+  const set=externalWordSets.find(s=>s.id===id);if(!set||!confirm(`「${set.name}」を削除しますか？`))return;
+  try{await saveExternalWordSets(externalWordSets.filter(s=>s.id!==id));externalWordSets=await loadExternalWordSets();renderVocabBody();}
+  catch(err){alert('❌ 削除に失敗しました: '+err.message);}
 }
 
 // Debug function: reset IndexedDB (call from console: resetDB())
