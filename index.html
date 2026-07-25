@@ -3001,10 +3001,7 @@ function getSRSDueTasks() {
         if (s._lesson) return;
         const isSelf = parentSRS;
         if (isSelf && s.dueDate && s.dueDate !== null && new Date(s.dueDate) <= now) {
-          // Only show if completed at least once (reps>0 or reviewCount>0)
-          if ((s.reps||0) > 0 || (s.reviewCount||0) > 0) {
-            due.push({ task: s, rootId, isParent: false });
-          }
+          due.push({ task: s, rootId, isParent: false });
         }
         walk(s.subtasks || [], rootId, s.srsActive || false);
       });
