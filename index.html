@@ -2142,12 +2142,63 @@ function renderExternalWordSetsList(el){
     }).join('');
 }let _extTestState = null; // { setId, words:[], idx, known, total, done:bool }
 
+// 外部単語帳テスト専用の日付キー（毎朝5時にリセット）
+function getExternalVocabTestDateKey() {
+  const now = new Date();
+  const H = now.getHours();
+  let d = new Date(now);
+  // 午前5時より前なら前日の日付を基準にする
+  if (H < 5) {
+    d.setDate(d.getDate() - 1);
+  }
+  const pad = n => n.toString().padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
+
+// 外部単語帳テストの進捗をlocalStorageに保存
+function saveExternalVocabProgress() {
+  if (!_extTestState) return;
+  const key = 'sf4-ext-vq-' + getExternalVocabTestDateKey() + '-' + _extTestState.setId;
+  try {
+    localStorage.setItem(key, JSON.stringify({
+      setId: _extTestState.setId,
+      idx: _extTestState.idx,
+      known: _extTestState.known,
+      total: _extTestState.total,
+      done: _extTestState.done
+    }));
+  } catch(e) {}
+}
+
+// 外部単語帳テストの進捗をlocalStorageから復元
+function loadExternalVocabProgress(setId) {
+  const key = 'sf4-ext-vq-' + getExternalVocabTestDateKey() + '-' + setId;
+  try {
+    const saved = localStorage.getItem(key);
+    if (saved) return JSON.parse(saved);
+  } catch(e) {}
+  return null;
+}
+
+// 外部単語帳テストの進捗をlocalStorageから削除（完了時など）
+function clearExternalVocabProgress(setId) {
+  const key = 'sf4-ext-vq-' + getExternalVocabTestDateKey() + '-' + setId;
+  try {
+    localStorage.removeItem(key);
+  } catch(e) {}
+}
+
 function openExternalWordSet(setId){
   const set=externalWordSets.find(s=>s.id===setId);
   if(!set)return;
   const words=[...(set.words||[])].sort((a,b)=>(a.score??1.0)-(b.score??1.0));
   const el=document.getElementById('vocab-body');
-  el.innerHTML=`<div style="margin-bottom:10px;display:flex;align-items:center;gap:6px;flex-wrap:wrap"><button class="bno" onclick="switchVocabTab('external')" style="font-size:12px">‹ 戻る</button><span style="font-weight:600">${esc(set.name)} (${words.length}語)</span><button class="bok" style="margin-left:auto;font-size:12px;padding:5px 12px" onclick="startExternalVocabTest('${setId}')">📝 テスト開始</button></div><div class="vocab-search-row"><input id="evs-search-input" type="search" placeholder="単語を検索..." style="flex:1;padding:9px 12px;background:var(--sf3);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:16px;outline:none"></div><div id="evs-cards"></div>`;
+  // 保存された進捗があるか確認
+  const savedProgress = loadExternalVocabProgress(setId);
+  const hasSaved = savedProgress && !savedProgress.done && savedProgress.idx > 0 && savedProgress.idx < savedProgress.total;
+  el.innerHTML=`<div style="margin-bottom:10px;display:flex;align-items:center;gap:6px;flex-wrap:wrap"><button class="bno" onclick="switchVocabTab('external')" style="font-size:12px">‹ 戻る</button><span style="font-weight:600">${esc(set.name)} (${words.length}語)</span>
+    ${hasSaved?`<button class="bok" style="margin-left:auto;font-size:12px;padding:5px 12px" onclick="resumeExternalVocabTest('${setId}')">▶ 続きから (${savedProgress.idx}/${savedProgress.total})</button>`:''}
+    <button class="bok" style="margin-left:${hasSaved?'4':'auto'};font-size:12px;padding:5px 12px" onclick="startExternalVocabTest('${setId}')">📝 新規テスト</button></div><div class="vocab-search-row"><input id="evs-search-input" type="search" placeholder="単語を検索..." style="flex:1;padding:9px 12px;background:var(--sf3);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:16px;outline:none"></div><div id="evs-cards"></div>`;
   function renderEVS(search){
     const filtered=search?words.filter(w=>w.word.toLowerCase().includes(search.toLowerCase())||w.meanings.some(m=>m.toLowerCase().includes(search.toLowerCase()))):words;
     const cards=document.getElementById('evs-cards');
@@ -2161,6 +2212,25 @@ function openExternalWordSet(setId){
 function startExternalVocabTest(setId){
   const set=externalWordSets.find(s=>s.id===setId);
   if(!set||!set.words||!set.words.length)return;
+  // 保存された進捗があれば復元
+  const savedProgress = loadExternalVocabProgress(setId);
+  if (savedProgress && !savedProgress.done && savedProgress.idx > 0 && savedProgress.idx < savedProgress.total) {
+    // キューを再構築（同じ並び順を保証するためにスコア順でソート）
+    const groups={};
+    set.words.forEach(w=>{
+      const score=(w.score??1.0).toFixed(1);
+      (groups[score]||(groups[score]=[])).push(w);
+    });
+    const queue=[];
+    Object.keys(groups).sort((a,b)=>parseFloat(a)-parseFloat(b)).forEach(score=>{
+      const group=groups[score];
+      for(let i=group.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[group[i],group[j]]=[group[j],group[i]];}
+      queue.push(...group);
+    });
+    _extTestState={setId,words:queue,idx:savedProgress.idx,known:savedProgress.known,total:savedProgress.total,done:false};
+    renderExternalVocabTest();
+    return;
+  }
   const groups={};
   set.words.forEach(w=>{
     const score=(w.score??1.0).toFixed(1);
@@ -2173,7 +2243,14 @@ function startExternalVocabTest(setId){
     queue.push(...group);
   });
   _extTestState={setId,words:queue,idx:0,known:0,total:queue.length,done:false};
+  // 新規テスト開始時に進捗を保存（idx=0）
+  saveExternalVocabProgress();
   renderExternalVocabTest();
+}
+
+// 保存された進捗からテストを再開
+function resumeExternalVocabTest(setId){
+  startExternalVocabTest(setId);
 }
 function renderExternalVocabTest(){
   const el=document.getElementById('vocab-body');
@@ -2213,7 +2290,7 @@ function submitExternalVocabTest(knew,event){
   event?.stopPropagation();
   if(!_extTestState||_extTestState.done)return;
   const w=_extTestState.words[_extTestState.idx];
-  const currentSlot=getVocabTestDateKey();
+  const currentSlot=getExternalVocabTestDateKey();
   if(w&&w.lastTestedSlot!==currentSlot){
     if(knew){
       w.score=Math.min(2.0,Math.round(((w.score??1.0)+0.1)*10)/10);
@@ -2228,6 +2305,10 @@ function submitExternalVocabTest(knew,event){
   if(knew)_extTestState.known++;
   _extTestState.idx++;
   if(_extTestState.idx>=_extTestState.total)_extTestState.done=true;
+  // 進捗を保存（中断後も再開できるように）
+  saveExternalVocabProgress();
+  // 完了したら進捗データを削除
+  if(_extTestState.done) clearExternalVocabProgress(_extTestState.setId);
   renderExternalVocabTest();
 }
 
